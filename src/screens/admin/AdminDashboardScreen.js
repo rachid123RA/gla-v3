@@ -122,6 +122,12 @@ export default function AdminDashboardScreen({ navigation }) {
         <Text style={styles.actionText}>Gestion des abonnements</Text>
         <Ionicons name="chevron-forward" size={18} color="#999" />
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.action} onPress={() => navigation.navigate('AdminSupport')}>
+        <Ionicons name="headset-outline" size={22} color="#2c5f2d" />
+        <Text style={styles.actionText}>Gestion support</Text>
+        <Ionicons name="chevron-forward" size={18} color="#999" />
+      </TouchableOpacity>
     </ScrollView>
   );
 }

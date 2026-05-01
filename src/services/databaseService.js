@@ -83,6 +83,20 @@ export const initDatabase = async () => {
       );
     `);
 
+    // Table: tickets support
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER,
+        subject TEXT NOT NULL,
+        message TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        createdAt TEXT DEFAULT (datetime('now')),
+        updatedAt TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (userId) REFERENCES users (id) ON DELETE SET NULL
+      );
+    `);
+
     // Seed FAQ (si vide)
     const faqCount = await db.getFirstAsync(`SELECT COUNT(*) as c FROM chatbot_faq`);
     if ((faqCount?.c ?? 0) === 0) {
@@ -371,6 +385,52 @@ export const getChatbotFaq = async () => {
     return { success: false, error: error.message };
   }
 };
+
+// ========== SUPPORT ==========
+export const createSupportTicket = async (userId, subject, message) => {
+  try {
+    const database = await getDatabase();
+    const result = await database.runAsync(
+      `INSERT INTO support_tickets (userId, subject, message) VALUES (?, ?, ?)`,
+      [userId ?? null, subject, message]
+    );
+    return { success: true, ticketId: result.lastInsertRowId };
+  } catch (error) {
+    console.error('Erreur createSupportTicket:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const getSupportTickets = async () => {
+  try {
+    const database = await getDatabase();
+    const rows = await database.getAllAsync(
+      `SELECT t.*, u.email, u.nom
+       FROM support_tickets t
+       LEFT JOIN users u ON u.id = t.userId
+       ORDER BY t.createdAt DESC`
+    );
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error('Erreur getSupportTickets:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateSupportTicketStatus = async (ticketId, status) => {
+  try {
+    const database = await getDatabase();
+    await database.runAsync(
+      `UPDATE support_tickets SET status = ?, updatedAt = datetime('now') WHERE id = ?`,
+      [status, ticketId]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur updateSupportTicketStatus:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 
 export const getSubscriptionByUserId = async (userId) => {
   try {

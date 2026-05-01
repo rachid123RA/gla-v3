@@ -24,6 +24,7 @@ import ParametresScreen from './src/screens/ParametresScreen';
 import AdminDashboardScreen from './src/screens/admin/AdminDashboardScreen';
 import AdminUsersScreen from './src/screens/admin/AdminUsersScreen';
 import AdminSubscriptionsScreen from './src/screens/admin/AdminSubscriptionsScreen';
+import AdminSupportScreen from './src/screens/admin/AdminSupportScreen';
 import SubscriptionGate from './src/components/SubscriptionGate';
 
 const Stack = createNativeStackNavigator();
@@ -44,6 +45,7 @@ function AdminStack() {
       <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: 'Admin' }} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: 'Utilisateurs' }} />
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} options={{ title: 'Abonnements' }} />
+      <Stack.Screen name="AdminSupport" component={AdminSupportScreen} options={{ title: 'Support' }} />
     </Stack.Navigator>
   );
 }
@@ -101,15 +103,7 @@ function TabsNavigation({ user }) {
       />
       <Tab.Screen
         name="Support"
-        component={() =>
-          user?.role === 'admin' ? (
-            <SupportScreen />
-          ) : (
-            <SubscriptionGate>
-              <SupportScreen />
-            </SubscriptionGate>
-          )
-        }
+        component={SupportScreen}
         options={{
           tabBarIcon: ({ color }) => <Ionicons name="help-circle-outline" size={22} color={color} />,
         }}

@@ -29,7 +29,7 @@ const AccueilScreen = ({ navigation }) => {
           <Text style={styles.getStartedText}>Get Started</Text>
         </TouchableOpacity>
 
-        <Text style={styles.skipText}>rachid & amina</Text>
+        <Text style={styles.skipText}>© OLLA+</Text>
         <TouchableOpacity onPress={() => navigation.navigate('Connexion')}>
           <Text style={styles.skipNow}>Skip Now →</Text>
         </TouchableOpacity>

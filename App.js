@@ -110,15 +110,7 @@ function TabsNavigation({ user }) {
       />
       <Tab.Screen
         name="Parametres"
-        component={() =>
-          user?.role === 'admin' ? (
-            <ParametresScreen />
-          ) : (
-            <SubscriptionGate>
-              <ParametresScreen />
-            </SubscriptionGate>
-          )
-        }
+        component={ParametresScreen}
         options={{
           tabBarIcon: ({ color }) => <Ionicons name="settings-outline" size={22} color={color} />,
         }}

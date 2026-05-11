@@ -1,0 +1,32 @@
+@startuml contexte-systeme
+!theme plain
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #E8F5E9
+  BorderColor #2E7D32
+}
+title Diagramme de contexte — MonAppIA / GollaSense
+
+actor "Client (agriculteur)" as Client
+actor "Administrateur" as Admin
+
+rectangle "MonAppIA\n(Expo / React Native)" as App #E8F5E9
+database "SQLite locale\n(MonAppIA.db)" as SQL
+rectangle "API Gollasense\n(Flask — prédiction & PDF)" as API #E3F2FD
+
+Client --> App : Utilise l'application\n(services, prédiction, support)
+Admin --> App : Gère utilisateurs,\nabonnements, support
+App --> SQL : Persistance utilisateurs,\nstocks, abonnements, tickets
+App --> API : HTTP /predict, /get-options,\n/generate-pdf, /health
+
+note right of App
+  Authentification locale (email/mot de passe).
+  Firebase désactivé dans le code actuel.
+end note
+
+note bottom of API
+  Modèle XGBoost + dataset CSV.
+  CORS activé pour l'app mobile.
+end note
+
+@enduml

@@ -1,0 +1,38 @@
+@startuml sequence-connexion
+!theme plain
+autonumber
+skinparam shadowing false
+title Séquence — Identification (connexion)
+
+actor Utilisateur
+participant "ConnexionScreen" as UI
+participant "authService" as Auth
+participant "databaseService" as DB
+database "SQLite" as SQL
+participant "AsyncStorage" as AS
+participant "App.js" as App
+
+Utilisateur -> UI : Saisir email / mot de passe
+UI -> Auth : seConnecter(email, password)
+Auth -> DB : loginUser(email, password)
+DB -> SQL : SELECT * WHERE email AND password
+alt identifiants invalides
+  SQL --> DB : aucune ligne
+  DB --> Auth : success=false
+  Auth --> UI : message d'erreur
+else OK
+  SQL --> DB : ligne user
+  DB --> Auth : user (sans mot de passe)
+  Auth -> AS : setCurrentUser(user.id)
+  Auth --> UI : success
+  loop toutes les ~1 s
+    App -> Auth : obtenirUtilisateurActuel()
+    Auth -> AS : get currentUserId
+    Auth -> DB : getUserById
+    DB --> App : user
+    App -> App : bascule Stack → Tabs
+  end
+  UI --> Utilisateur : Accès à l'app
+end
+
+@enduml

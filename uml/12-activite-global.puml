@@ -1,0 +1,73 @@
+@startuml activite-global
+!theme plain
+skinparam shadowing false
+title Diagramme d'activité — Vue d'ensemble (client & admin)
+
+|Client|
+start
+:Démarrage app;
+:initDatabase() + seed FAQ / admin;
+if (Utilisateur stocké dans AsyncStorage ?) then (oui)
+  :Charger profil SQLite;
+  if (role == admin ?) then (oui)
+    |#LightYellow|Admin|
+    :Onglets + onglet Admin;
+  else (non)
+    |Client|
+    :Onglets standards;
+  endif
+else (non)
+  |Client|
+  :Écrans Accueil / Connexion / Inscription;
+  if (Inscription réussie ?) then (oui)
+    :Créer user + subscription pending;
+    :setCurrentUser;
+  endif
+  if (Connexion réussie ?) then (oui)
+    :setCurrentUser;
+  endif
+endif
+
+|Client|
+if (Besoin Chatbot ou Prédiction ?) then (oui)
+  if (role == admin ?) then (oui)
+    :Accès direct;
+  else (non)
+    if (Abonnement actif ?) then (oui)
+      :Accès fonctionnalité;
+    else (non)
+      :Afficher demande d'activation;
+      :Option: envoyer demande (pending);
+      stop
+    endif
+  endif
+  if (Prédiction) then (oui)
+    :Appel API Flask /predict;
+    if (HTTP OK ?) then (oui)
+      :Afficher résultat + log predictions;
+    else (non)
+      :Message erreur réseau/API;
+    endif
+  endif
+endif
+
+if (Support client ?) then (oui)
+  :Créer ticket SQLite;
+endif
+
+|Admin|
+if (Session admin ?) then (oui)
+  fork
+    :Tableau de bord métriques;
+  fork again
+    :Gérer utilisateurs / rôles;
+  fork again
+    :Gérer abonnements;
+  fork again
+    :Traiter tickets support;
+  end fork
+endif
+
+stop
+
+@enduml

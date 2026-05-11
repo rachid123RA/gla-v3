@@ -1,0 +1,108 @@
+@startuml classes-global
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+title Diagramme de classes (modèle métier + couches principales)
+
+class User {
+  +id: int
+  +email: string
+  +password: string <<stocké en clair (MVP)>>
+  +nom: string
+  +dateNaissance: string
+  +imageProfil: string
+  +role: string <<user | admin>>
+  +createdAt: string
+}
+
+class Subscription {
+  +id: int
+  +userId: int
+  +plan: string <<free|basic|pro>>
+  +status: string <<pending|active|paused|cancelled|expired>>
+  +startsAt: string
+  +endsAt: string
+}
+
+class PredictionLog {
+  +id: int
+  +userId: int
+  +createdAt: string
+}
+
+class Stock {
+  +id: int
+  +typeProduit: string
+  +quantite: int
+  +dateEntree: string
+  +dateSortie: string
+  +budget: real
+  +zoneAgricole: string
+  +description: string
+}
+
+class SupportTicket {
+  +id: int
+  +userId: int
+  +subject: string
+  +message: string
+  +status: string <<open|...>>
+}
+
+class ChatbotFaq {
+  +id: int
+  +question: string
+  +answer: string
+  +tags: string
+}
+
+User "1" -- "0..*" Subscription : possède >
+User "1" -- "0..*" PredictionLog : déclenche >
+User "1" -- "0..*" SupportTicket : ouvre >
+User "1" -- "0..*" Stock : gère > 'via écrans (pas de FK user dans stocks)
+
+class AuthService <<service>> {
+  +creerCompte()
+  +seConnecter()
+  +seDeconnecter()
+  +obtenirUtilisateurActuel()
+}
+
+class DatabaseService <<service>> {
+  +initDatabase()
+  +createUser() / loginUser()
+  +getAllUsers() / setUserRole() / deleteUser()
+  +getSubscriptions() / upsertSubscription()
+  +recordPrediction()
+  +... stocks, tickets, faq ...
+}
+
+class SubscriptionService <<service>> {
+  +getSubscriptionStatusForCurrentUser()
+  +ensureActivationRequest()
+}
+
+AuthService ..> DatabaseService : utilise
+SubscriptionService ..> DatabaseService
+SubscriptionService ..> AuthService
+
+class PredictionScreen <<React>> {
+  +saisie formulaire
+  +appel HTTP /predict
+}
+
+class GollasenseApi <<Flask>> {
+  +POST /predict
+  +GET /get-options
+  +POST /generate-pdf
+  +GET /health
+}
+
+PredictionScreen ..> GollasenseApi : JSON
+
+note bottom of User
+  Schéma aligné sur la table SQLite ``users``.
+  Admin seed : admin@monappia.local
+end note
+
+@enduml

@@ -1,0 +1,54 @@
+@startuml composants-logiques
+!theme plain
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+title Vue composants (couches logicielles)
+
+package "Présentation (React Native)" {
+  [Écrans publics] as Pub
+  [Onglets principaux] as Tabs
+  [Stack Admin] as AdmUI
+  [SubscriptionGate] as Gate
+}
+
+package "Services applicatifs" {
+  [authService] as Auth
+  [databaseService] as DBsvc
+  [subscriptionService] as Subsvc
+}
+
+package "Persistance locale" {
+  database "expo-sqlite\nMonAppIA.db" as SQLite
+  storage "AsyncStorage\n(currentUserId)" as AS
+}
+
+package "API distante" {
+  [Flask gollasense-api] as Flask
+  file "Modèle .pkl +\nCSV référence" as ML
+}
+
+Pub --> Auth
+Tabs --> Auth
+Tabs --> DBsvc
+Tabs --> Gate
+Gate --> Subsvc
+AdmUI --> DBsvc
+
+Auth --> DBsvc
+Auth --> AS
+Subsvc --> DBsvc
+Subsvc --> Auth
+
+DBsvc --> SQLite
+
+[Tabs] ..> Flask : axios\n(prédiction)
+Flask --> ML
+
+note right of Gate
+  Bloque Chatbot / Prédiction
+  si abonnement != active
+  (sauf rôle admin).
+end note
+
+@enduml

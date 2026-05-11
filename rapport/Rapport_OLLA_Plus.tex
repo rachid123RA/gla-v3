@@ -1,0 +1,852 @@
+% =============================================================================
+% Rapport : Application mobile OLLA+ — Gestion agricole et prédiction d'irrigation
+% Compilation recommandée : pdflatex + bibtex (si bibliographie activée)
+% Cible : 40--60 pages (ajoutez figures, annexes longues, captures d'écran)
+% =============================================================================
+\documentclass[12pt,a4paper,twoside,openright]{report}
+
+% --- Encodage et langue ---
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{microtype}
+
+% --- Mise en page ---
+\usepackage[a4paper,margin=2.5cm,headheight=14pt]{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{setspace}
+\onehalfspacing
+
+% --- Graphiques et tableaux ---
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.misc,fit}
+
+% --- Mathématiques ---
+\usepackage{amsmath,amssymb}
+
+% --- Code et listings ---
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  tabsize=2,
+  showstringspaces=false,
+  columns=fullflexible
+}
+
+% --- Liens ---
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+  pdftitle={OLLA+ — Rapport technique},
+  pdfauthor={Équipe projet},
+}
+
+% --- En-têtes / pieds ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\thepage}
+\fancyhead[LO]{\nouppercase{\leftmark}}
+\fancyhead[RE]{\nouppercase{\rightmark}}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% --- Titre du document ---
+\title{
+  \vspace{1cm}
+  {\Large Rapport de projet / mémoire technique}\\[0.8cm]
+  {\LARGE \textbf{OLLA+}}\\[0.4cm]
+  {\large Application mobile de gestion des exploitations agricoles\\avec prédiction de la consommation d'eau d'irrigation}\\[1.2cm]
+}
+\author{Équipe projet — Gestion des domaines agricoles de A à Z}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\cleardoublepage
+
+% -----------------------------------------------------------------------------
+\begin{abstract}
+Ce document présente le service rendu par l'application mobile \textbf{OLLA+}, conçue pour accompagner la gestion des domaines agricoles sur l'ensemble du cycle opérationnel : suivi des activités, \textbf{analyse de séries temporelles} (température, humidité, quantité d'eau) à partir de données embarquées, gestion de stock, assistance (chatbot FAQ), \textbf{diagnostic par image} (démonstration), module \textbf{capteurs} (données de démo), support utilisateur, administration (utilisateurs, abonnements, tickets), et surtout un \textbf{cœur métier} centré sur la \textbf{prédiction de la consommation d'eau} via une API Flask et un modèle XGBoost. Le rapport comporte notamment un chapitre dédié à l'\textbf{inventaire fonctionnel complet}, aux \textbf{scénarios d'usage} et aux \textbf{limites} de chaque module, puis les chapitres modélisation, conception et réalisation.
+
+\textbf{Mots-clés :} agriculture de précision, irrigation, régression supervisée, XGBoost, API REST Flask, React Native, Expo, SQLite, architecture mobile.
+\end{abstract}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\cleardoublepage
+
+% =============================================================================
+\chapter{Étude préalable et expression des besoins}
+% =============================================================================
+
+\section{Contexte général}
+
+L'agriculture moderne fait face à une triple contrainte : \textbf{productivité}, \textbf{durabilité} et \textbf{rationalisation des ressources}, notamment l'eau. La gestion d'une exploitation agricole implique de nombreuses tâches interconnectées : planification des cultures, suivi des intrants, gestion des stocks, surveillance des conditions climatiques, et ajustement des pratiques d'irrigation. Les outils numériques permettent de centraliser l'information, de réduire les erreurs manuelles et d'aider à la prise de décision.
+
+\textbf{OLLA+} se positionne comme une application mobile visant à offrir une \textbf{vision intégrée} de la gestion agricole, tout en mettant l'accent sur un service différenciant : l'estimation assistée par modèle de la \textbf{quantité d'eau nécessaire} pour une parcelle et une culture données.
+
+\section{Problématique}
+
+Les agriculteurs et gestionnaires de parcelles doivent souvent :
+\begin{itemize}
+  \item estimer l'irrigation sans disposer d'outils de calcul adaptés à leur contexte (plante, sol, saison, météo, surface, état sanitaire) ;
+  \item suivre les stocks (intrants, récoltes, équipements) de manière dispersée (carnets, tableurs) ;
+  \item accéder rapidement à de l'aide (FAQ, support) et à des services complémentaires (diagnostic, capteurs — selon périmètre du projet).
+\end{itemize}
+
+La problématique centrale peut être formulée ainsi :
+
+\begin{quote}
+\textit{Comment concevoir une application mobile unifiée permettant la gestion opérationnelle d'une exploitation agricole tout en fournissant une estimation fiable et exploitable de la consommation d'eau d'irrigation, intégrée dans un écosystème logiciel maintenable (API, données, rôles utilisateurs) ?}
+\end{quote}
+
+\section{Objectifs du projet}
+
+\subsection{Objectif général}
+Fournir une application mobile \textbf{modulaire} et \textbf{évolutive} couvrant les besoins de gestion agricole, avec un module de prédiction d'irrigation basé sur un modèle d'apprentissage automatique déployé via une API.
+
+\subsection{Objectifs spécifiques}
+\begin{enumerate}
+  \item Modéliser la consommation d'eau à partir d'un jeu de données structuré (régression supervisée).
+  \item Exposer le modèle via une \textbf{API REST} sécurisée par conception réseau (accès local / configuration) et cohérente avec l'application.
+  \item Concevoir une interface mobile claire (navigation par onglets, écrans métier).
+  \item Gérer les utilisateurs localement (SQLite) avec distinction \textbf{administrateur} / \textbf{utilisateur}.
+  \item Mettre en place des mécanismes métiers : abonnement/activation, support, statistiques d'usage (prédictions enregistrées).
+\end{enumerate}
+
+\section{Périmètre fonctionnel}
+
+\subsection{Dans le périmètre}
+\begin{itemize}
+  \item Authentification locale (création de compte, connexion).
+  \item Tableau de bord des services (accès aux modules : diagnostic, analyse, prédiction, stock, chatbot, capteurs).
+  \item \textbf{Prédiction d'irrigation} : saisie ou sélection de paramètres, appel API, affichage des résultats (L/m$^2$/jour, total L/jour, indice de stress, conseil).
+  \item Gestion de stock (CRUD local SQLite).
+  \item Chatbot FAQ hors ligne (base locale).
+  \item Diagnostic image (démonstration : scénario tomate, sans modèle de vision lourd intégré).
+  \item Support : envoi de tickets stockés localement ; interface admin de suivi.
+  \item Administration : gestion utilisateurs, abonnements, support, indicateurs agrégés.
+\end{itemize}
+
+\subsection{Hors périmètre ou évolutions possibles}
+\begin{itemize}
+  \item Modèle de vision réel entraîné sur un jeu d'images de maladies (le diagnostic actuel est une démonstration pédagogique).
+  \item Synchronisation cloud multi-appareils (Firebase Auth complet, backend distant pour tous les modules).
+  \item Paiement réel des abonnements (Stripe, etc.).
+\end{itemize}
+
+\section{Acteurs et scénarios d'usage}
+
+\subsection{Acteurs}
+\begin{itemize}
+  \item \textbf{Utilisateur standard} : exploite les services après activation ; consulte la prédiction, gère son stock, contacte le support.
+  \item \textbf{Administrateur} : valide les demandes d'activation, gère les comptes, consulte les statistiques et les tickets.
+\end{itemize}
+
+\subsection{Scénario type — Prédiction d'irrigation}
+\begin{enumerate}
+  \item L'utilisateur ouvre le module \textit{Prédiction}.
+  \item Il renseigne la plante, la saison (ou une date), le type de sol, l'état sanitaire, la surface et l'âge de la plante.
+  \item L'application envoie une requête HTTP POST à l'API \texttt{/predict}.
+  \item L'API construit le vecteur de caractéristiques, applique le pipeline ML, renvoie JSON.
+  \item L'application affiche les résultats et enregistre un événement de prédiction (statistiques locales).
+\end{enumerate}
+
+\section{Besoins fonctionnels}
+
+Le tableau~\ref{tab:bf} synthétise les besoins fonctionnels principaux (échantillon non exhaustif ; à compléter selon cahier des charges officiel).
+
+\begin{table}[H]
+  \centering
+  \caption{Exemples de besoins fonctionnels (BF)}
+  \label{tab:bf}
+  \begin{tabular}{@{}clp{8cm}@{}}
+    \toprule
+    \textbf{ID} & \textbf{Module} & \textbf{Description} \\
+    \midrule
+    BF-01 & Auth & Création de compte et connexion avec persistance locale. \\
+    BF-02 & Prédiction & Calcul de la consommation d'eau via API + affichage résultats. \\
+    BF-03 & Stock & Ajout, consultation, modification, suppression d'articles de stock. \\
+    BF-04 & Admin & Gestion des rôles et des utilisateurs. \\
+    BF-05 & Abonnement & Demande d'activation et activation par durée (admin). \\
+    BF-06 & Support & Création de ticket et suivi côté admin. \\
+    BF-07 & Chatbot & Réponses FAQ basées sur une base locale. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Besoins non fonctionnels}
+
+\subsection{Performance}
+\begin{itemize}
+  \item Temps de réponse API acceptable en réseau local (ordre de la seconde hors chargement initial du modèle).
+  \item Interface réactive sur mobile (éviter les blocages UI).
+\end{itemize}
+
+\subsection{Disponibilité et déploiement}
+\begin{itemize}
+  \item L'API Flask doit être exécutée sur une machine accessible (IP locale, port non conflictuel — sur macOS le port 5000 peut être occupé ; utilisation de 5001 possible).
+\end{itemize}
+
+\subsection{Sécurité (niveau projet)}
+\begin{itemize}
+  \item Mots de passe stockés en clair dans SQLite : \textbf{limite connue} ; en production, il faudrait hachage (bcrypt/Argon2) et politique de mots de passe.
+  \item Contrôle d'accès aux fonctionnalités sensibles via rôle admin et statut d'abonnement.
+\end{itemize}
+
+\subsection{Maintenabilité}
+\begin{itemize}
+  \item Séparation \textbf{mobile} / \textbf{API} / \textbf{modèle} (fichier \texttt{joblib}).
+  \item Pipeline scikit-learn unique pour entraînement et inférence.
+\end{itemize}
+
+\subsection{Utilisabilité}
+\begin{itemize}
+  \item Navigation par onglets, libellés en français, messages d'erreur explicites (timeout réseau, URL API).
+\end{itemize}
+
+\section{Contraintes}
+
+\begin{itemize}
+  \item Contrainte réseau : l'application mobile doit joindre l'hôte qui exécute Flask (localhost pour simulateur, IP LAN pour appareil physique).
+  \item Contrainte matérielle : chargement du modèle XGBoost et du CSV de référence au démarrage de l'API.
+  \item Contrainte pédagogique : certaines fonctionnalités sont des démos (diagnostic image) pour illustrer le parcours utilisateur.
+\end{itemize}
+
+\section{Méthodologie de travail}
+
+Une approche incrémentale a été adoptée :
+\begin{enumerate}
+  \item Spécification des besoins et identification du cœur métier (prédiction).
+  \item Modélisation et validation sur données.
+  \item Conception de l'architecture et choix technologiques.
+  \item Implémentation itérative (modules + intégration API + rôles).
+\end{enumerate}
+
+\cleardoublepage
+
+% =============================================================================
+\chapter{Inventaire fonctionnel, scénarios d'usage et limites par module}
+% =============================================================================
+\label{chap:inventaire}
+
+Ce chapitre synthétise \textbf{l'application telle qu'implémentée dans le code source} : chaque fonctionnalité est décrite, un \textbf{scénario nominal} indique le déroulement côté utilisateur, et une rubrique \textbf{problèmes / limites} précise les risques, les simplifications assumées ou les évolutions nécessaires. Cela complète l'étude préalable par une vision \textbf{opérationnelle} utile au rapport et à la soutenance.
+
+\section{Architecture de navigation (rappel)}
+
+Après authentification, l'utilisateur accède à une barre d'onglets : \textbf{Services}, \textbf{Chatbot}, \textbf{Prédiction}, \textbf{Support}, \textbf{Paramètres}, et éventuellement \textbf{Admin} si le compte a le rôle \texttt{admin}. L'écran \textbf{Services} ouvre une pile (\textit{stack}) permettant d'atteindre : Diagnostic, Analyse, Prédiction (doublon d'accès), Stock, Capteurs, Chatbot, Paramètres.
+
+\section{Synthèse tabulaire des modules}
+
+Le tableau~\ref{tab:modules} regroupe les briques logicielles, leur nature (données locales, API, démo), et les principales limites.
+
+\begin{table}[H]
+  \centering
+  \caption{Vue d'ensemble des fonctionnalités OLLA+ (implémentation actuelle)}
+  \label{tab:modules}
+  \small
+  \begin{tabular}{@{}p{3.1cm}p{3.6cm}p{4.2cm}p{4.4cm}@{}}
+    \toprule
+    \textbf{Module} & \textbf{Rôle} & \textbf{Technologies / données} & \textbf{Limite majeure} \\
+    \midrule
+    Accueil & Entrée branding & React Native / assets & Aucune donnée métier. \\
+    Connexion / Inscription & Auth locale & SQLite + AsyncStorage & Mots de passe non hachés (projet). \\
+    Services (hub) & Grille des services & Navigation & Accès métier soumis à abonnement \texttt{active} (sauf Support/Paramètres). \\
+    \textbf{Diagnostic} & Aide au diagnostic visuel & ImagePicker, logique démo & Pas de modèle CV réel ; résultat simulé à partir de l'image. \\
+    \textbf{Analyse} & Visualisation climat / eau & \texttt{temperature\_data.js}, \texttt{humidity\_data.js}, \texttt{water\_quantity\_data.js}, react-native-gifted-charts, export document & Données \textbf{statiques embarquées}, pas de flux capteur temps réel. \\
+    Prédiction & Cœur métier irrigation & Axios $\rightarrow$ Flask \texttt{/predict}, SQLite (stats) & API doit tourner ; URL/port/IP selon l'appareil ; charge modèle côté serveur. \\
+    Stock & Gestion stocks & SQLite CRUD & Pas de synchronisation multi-utilisateurs. \\
+    Chatbot & FAQ conversationnelle & SQLite \texttt{chatbot\_faq}, matching mots-clés & Pas de LLM ; base finie ; qualité des réponses limitée. \\
+    Capteurs & Tableau de bord parcelles & Données \textbf{hardcodées} dans l'écran & Aucune connexion MQTT/API capteurs réelle. \\
+    Support & Contact + tickets & SQLite \texttt{support\_tickets} & Pas d'envoi e-mail automatique ; traitement manuel côté admin. \\
+    Paramètres & Profil utilisateur & SQLite, ImagePicker & Email affiché peut être en lecture seule selon implémentation. \\
+    Admin & Pilotage & Écrans dédiés (dashboard, users, abonnements, support) & Données admin locales au téléphone (SQLite). \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Scénario global « de A à Z » (utilisateur standard)}
+
+\begin{enumerate}
+  \item \textbf{Lancement} : écran d'accueil \textit{OLLA+}, bouton \textit{Get Started} ou connexion.
+  \item \textbf{Inscription} : nom, email, mot de passe, date de naissance, photo optionnelle $\rightarrow$ création ligne \texttt{users} + abonnement \texttt{pending}.
+  \item \textbf{Connexion} : vérification email/mot de passe $\rightarrow$ session (\texttt{currentUserId}).
+  \item \textbf{Activation (si politique appliquée)} : tant que l'abonnement n'est pas \texttt{active}, l'ouverture de certains services affiche une demande d'activation ; l'admin active une durée (ex. 1 à 12 mois).
+  \item \textbf{Services} : l'utilisateur choisit un module (diagnostic, analyse, prédiction, stock, capteurs, etc.).
+  \item \textbf{Prédiction} : saisie des paramètres agronomiques $\rightarrow$ appel API $\rightarrow$ affichage L/jour et conseil $\rightarrow$ enregistrement local pour statistiques.
+  \item \textbf{Analyse} : consultation de graphiques (température, humidité, eau) sur période semaine/mois/année ; possibilité d'export (document).
+  \item \textbf{Stock} : saisie d'entrées/sorties, consultation des lots.
+  \item \textbf{Support} : envoi d'un ticket (sujet, message) visible dans l'espace admin.
+  \item \textbf{Déconnexion} : depuis les paramètres (selon implémentation).
+\end{enumerate}
+
+\section{Module Diagnostic (démonstration)}
+
+\subsection{Fonctionnement}
+L'utilisateur lit une description du service, sélectionne une photo dans la \textbf{galerie} (\texttt{expo-image-picker}), puis lance \textbf{Analyser}. L'application affiche une \textbf{maladie de la tomate} (jeu de cas prédéfinis : mildiou, alternariose, septoriose, oïdium, etc.) avec symptômes, traitement et prévention, ainsi qu'un score de « confiance ».
+
+\subsection{Scénario nominal}
+Hub Services $\rightarrow$ Diagnostic $\rightarrow$ Choisir une photo $\rightarrow$ Analyser $\rightarrow$ Lecture du résultat.
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item \textbf{Aucun réseau de neurones} ni modèle scikit-learn sur images : le résultat est \textbf{pédagogique}, pas une certification phytopathologique.
+  \item Risque \textbf{métier} : un utilisateur peut croire à un diagnostic médical végétal fiable ; il faut afficher clairement « démo » (déjà présent dans l'UI).
+  \item Dépendance aux \textbf{permissions} photos (iOS/Android).
+\end{itemize}
+
+\section{Module Analyse (température, humidité, quantité d'eau)}
+
+\subsection{Fonctionnement}
+L'écran \textbf{Analyse} exploite trois jeux de données importés depuis des modules JavaScript : \texttt{temperature\_data}, \texttt{humidity\_data}, \texttt{water\_quantity\_data} (séries datées transformées en points pour graphiques). L'utilisateur peut :
+\begin{itemize}
+  \item basculer entre les indicateurs \textbf{Température (°C)}, \textbf{Humidité (\%)}, \textbf{Quantité d'eau (L)} ;
+  \item choisir une période d'agrégation : \textbf{semaine}, \textbf{mois}, \textbf{année} ;
+  \item visualiser des graphiques en barres ou courbes (\texttt{react-native-gifted-charts}) ;
+  \item consulter des statistiques (moyenne, min, max) sur la fenêtre ;
+  \item exporter ou partager des données via \texttt{expo-document-picker} / \texttt{expo-sharing} (selon parcours implémenté dans l'écran).
+\end{itemize}
+
+\subsection{Scénario nominal}
+Services $\rightarrow$ Analyse $\rightarrow$ choix de l'indicateur $\rightarrow$ choix de la période $\rightarrow$ interprétation visuelle des tendances.
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item Les séries ne proviennent \textbf{pas} de capteurs connectés en temps réel : elles sont \textbf{embarquées} dans l'application (jeu de démonstration ou données pré-générées).
+  \item Pas de garantie de \textbf{fraîcheur} : pas de synchronisation avec une base météo live dans ce périmètre.
+  \item Volume mémoire : fichiers de données JS peuvent alourdir le bundle ; évolution : API séries temporelles.
+  \item Confusion possible pour l'utilisateur entre \textbf{Analyse} (historique statique) et \textbf{Capteurs} (autre démo) : clarification UX recommandée.
+\end{itemize}
+
+\section{Module Prédiction (consommation d'eau)}
+
+\subsection{Fonctionnement}
+Saisie ou sélection : plante, saison (ou date), type de sol, état sanitaire, surface (m$^2$), âge (jours). Requête \texttt{POST /predict} vers l'API Flask. Réponse : litres totaux par jour, litres par m$^2$, indice de stress, conseil textuel.
+
+\subsection{Scénario nominal}
+Onglet Prédiction ou Services $\rightarrow$ Prédiction $\rightarrow$ remplir le formulaire $\rightarrow$ calcul $\rightarrow$ résultats.
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item \textbf{Réseau} : mauvaise URL (\texttt{localhost} sur téléphone physique), port occupé (ex. 5000 sur macOS), pare-feu, API arrêtée $\rightarrow$ timeout ou \textit{network error}.
+  \item \textbf{Cohérence scientifique} : le modèle est entraîné sur un jeu tabulaire ; les entrées météo réelles peuvent différer des moyennes calculées côté API à partir du CSV de référence.
+  \item \textbf{Abonnement} : utilisateur non activé $\rightarrow$ écran de blocage (sauf admin).
+\end{itemize}
+
+\section{Module Stock}
+
+\subsection{Fonctionnement}
+CRUD sur table SQLite \texttt{stocks} : type de produit, quantité, dates, budget, zone, description ; distinction visuelle entrées / sorties.
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item Données \textbf{locales au téléphone} : pas de backup cloud ni partage entre exploitants.
+  \item Pas de gestion avancée (lots, péremption, codes-barres) sauf extension.
+\end{itemize}
+
+\section{Module Chatbot}
+
+\subsection{Fonctionnement}
+Questions/réponses stockées en \texttt{chatbot\_faq} ; recherche par similarité simple (tokens) ; conversation type bulles.
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item Pas de compréhension profonde ; requêtes hors FAQ $\rightarrow$ réponse générique.
+  \item Maintenance : enrichissement manuel de la base ou interface admin dédiée (évolution).
+\end{itemize}
+
+\section{Module Capteurs}
+
+\subsection{Fonctionnement}
+Tableau de bord par \textbf{zones} (Nord, Sud, Est, Ouest) avec capteurs simulés (humidité sol, température air, débit), actionneurs (vannes, pompes), alertes. Graphiques \texttt{BarChart}/\texttt{LineChart}.
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item Données \textbf{entièrement définies dans le code} (\textit{mock}) : aucune mesure réelle.
+  \item Mention « Open-Meteo » ou MQTT dans les libellés est \textbf{illustrative} tant que l'intégration n'est pas codée.
+\end{itemize}
+
+\section{Module Support}
+
+\subsection{Fonctionnement}
+Coordonnées de contact + formulaire (sujet, message) $\rightarrow$ insertion \texttt{support\_tickets}. L'admin consulte et change le statut (\texttt{open}, \texttt{in\_progress}, \texttt{closed}).
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item Pas d'intégration SMTP/push : le ticket reste dans la base locale jusqu'à consultation admin sur un appareil ayant la même base (en pratique : démo mono-poste ou export à prévoir).
+\end{itemize}
+
+\section{Module Paramètres}
+
+\subsection{Fonctionnement}
+Affichage et mise à jour du profil (nom, date de naissance, photo), déconnexion possible.
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item Cohérence email : selon les écrans, l'email peut être une clé de connexion ; modifier l'email sans contrainte peut poser problème (à verrouiller en production).
+\end{itemize}
+
+\section{Espace Administrateur}
+
+\subsection{Fonctionnement}
+Dashboard (métriques agrégées : utilisateurs, prédictions enregistrées, abonnements), gestion utilisateurs (rôles, suppression), abonnements (activation, durée, filtres), gestion support (liste tickets).
+
+\subsection{Problèmes et limites}
+\begin{itemize}
+  \item Les statistiques « prédictions » comptent les enregistrements locaux lors d'une prédiction réussie depuis \textbf{cet} appareil ; pas de vue centralisée serveur sans backend commun.
+  \item Compte admin par défaut en démo : à changer impérativement en production.
+\end{itemize}
+
+\section{Synthèse des risques transverses}
+
+\begin{itemize}
+  \item \textbf{Démo vs production} : plusieurs modules (diagnostic, analyse, capteurs) sont des \textbf{maquettes fonctionnelles}.
+  \item \textbf{Sécurité} : SQLite locale, mots de passe en clair, pas de chiffrement bout-en-bout.
+  \item \textbf{Interopérabilité} : la valeur ajoutée « terrain » viendra du branchement capteurs, météo, et utilisateurs multi-appareils.
+\end{itemize}
+
+\cleardoublepage
+
+% =============================================================================
+\chapter{Modélisation de la consommation d'eau (intelligence artificielle)}
+% =============================================================================
+
+\section{Formulation du problème d'apprentissage}
+
+Il s'agit d'un problème de \textbf{régression supervisée} : prédire une variable continue $y$ représentant la quantité d'eau nécessaire (litres par jour pour la parcelle), à partir d'un vecteur de caractéristiques $\mathbf{x}$ regroupant des informations agronomiques et climatiques.
+
+\section{Données}
+
+\subsection{Source et volume}
+Le jeu de données utilisé est le fichier CSV \texttt{golla\_dataset\_100k\_no\_accents.csv} contenant \textbf{100\,000} observations et des variables cohérentes avec la modélisation décrite dans le notebook de référence du projet.
+
+\subsection{Variables typiques}
+Les entrées incluent notamment :
+\begin{itemize}
+  \item \textbf{Catégorielles} : \texttt{nom\_plante}, \texttt{type\_plante}, \texttt{type\_sol}, \texttt{saison}, \texttt{etat\_sante}.
+  \item \textbf{Numériques} : température, humidité, ensoleillement, vent, pluviométrie, surface (m$^2$), âge de la plante (jours).
+\end{itemize}
+
+\subsection{Qualité des données}
+\begin{itemize}
+  \item Contrôle des valeurs manquantes (objectif : jeu propre pour l'entraînement).
+  \item Cohérence des modalités (accents, unicité des libellés).
+\end{itemize}
+
+\section{Prétraitement et pipeline}
+
+Le prétraitement est encapsulé dans un \textbf{Pipeline scikit-learn} :
+\begin{itemize}
+  \item encodage des variables catégorielles (\texttt{OneHotEncoder}) ;
+  \item normalisation des variables numériques (\texttt{StandardScaler}) ;
+  \item composition via \texttt{ColumnTransformer}.
+\end{itemize}
+
+Ce pipeline est chaîné avec le régresseur final et sérialisé avec le modèle pour garantir la \textbf{même transformation} à l'inférence.
+
+\section{Algorithmes étudiés et modèle retenu}
+
+Des modèles de complexité croissante sont comparés dans la démarche du notebook :
+\begin{itemize}
+  \item régression linéaire (baseline interprétable) ;
+  \item forêt aléatoire (modèle ensembliste) ;
+  \item \textbf{XGBoost} (gradient boosting) — modèle retenu pour la performance et la capacité à capturer des non-linéarités.
+\end{itemize}
+
+\section{Évaluation et métriques}
+
+\subsection{Définitions}
+Pour un échantillon de $n$ observations, avec $y_i$ la valeur réelle et $\hat{y}_i$ la prédiction :
+\begin{align}
+  \mathrm{MAE} &= \frac{1}{n} \sum_{i=1}^{n} \left| y_i - \hat{y}_i \right| \\
+  \mathrm{RMSE} &= \sqrt{\frac{1}{n} \sum_{i=1}^{n} \left( y_i - \hat{y}_i \right)^2} \\
+  R^2 &= 1 - \frac{\sum_{i=1}^{n}(y_i-\hat{y}_i)^2}{\sum_{i=1}^{n}(y_i-\bar{y})^2}
+\end{align}
+
+\subsection{Lecture métier}
+\begin{itemize}
+  \item \textbf{MAE} et \textbf{RMSE} s'expriment dans les \textbf{mêmes unités} que la cible (litres/jour) : facilité de communication terrain.
+  \item \textbf{$R^2$} résume la part de variance expliquée (comparaison de modèles).
+\end{itemize}
+
+\subsection{Insérer vos valeurs numériques finales}
+\textit{À compléter après exécution du notebook sur votre machine : reporter ici le tableau des métriques par modèle (train/test), courbes résidus, importances de variables.}
+
+\begin{table}[H]
+  \centering
+  \caption{Exemple de tableau de résultats (à remplacer par vos chiffres)}
+  \label{tab:metrics}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    \textbf{Modèle} & \textbf{MAE (L/j)} & \textbf{RMSE (L/j)} & \textbf{$R^2$} \\
+    \midrule
+    Régression linéaire & \textit{...} & \textit{...} & \textit{...} \\
+    Random Forest & \textit{...} & \textit{...} & \textit{...} \\
+    XGBoost (retenu) & \textit{...} & \textit{...} & \textit{...} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Inférence côté API (Flask)}
+
+\subsection{Endpoint \texttt{/predict}}
+L'API reconstruit les features à partir du JSON utilisateur. Une particularité du projet est l'enrichissement climatique par \textbf{moyennes conditionnelles} sur le jeu de référence : pour une combinaison (plante, saison, sol), on calcule des moyennes de température, humidité, etc. ; si la combinaison est rare, on élargit progressivement le filtre.
+
+\subsection{Cohérence avec l'application mobile}
+L'application envoie notamment :
+\begin{itemize}
+  \item \texttt{nom\_plante}, \texttt{saison}, \texttt{type\_sol}, \texttt{etat\_sante}, \texttt{date}, \texttt{surface}, \texttt{age\_plante\_jours}.
+\end{itemize}
+
+\subsection{Sorties}
+\begin{itemize}
+  \item \texttt{prediction\_totale} : litres/jour (total parcelle),
+  \item \texttt{prediction\_m2} : litres/m$^2$/jour (dérivé),
+  \item \texttt{indice\_stress} : indicateur composite,
+  \item \texttt{conseil} : recommandation textuelle.
+\end{itemize}
+
+\section{Limites et travaux futurs}
+
+\begin{itemize}
+  \item Validation sur données réelles capteurs/terrain.
+  \item Optimisation d'hyperparamètres (recherche sur grille, validation croisée).
+  \item Calibration incertitude (intervalles de prédiction).
+  \item Journalisation et monitoring en production.
+\end{itemize}
+
+\cleardoublepage
+
+% =============================================================================
+\chapter{Conception de l'application (architecture et modèle logiciel)}
+% =============================================================================
+
+\section{Vue d'ensemble}
+
+L'application suit une architecture \textbf{client--serveur légère} :
+\begin{itemize}
+  \item \textbf{Client mobile} (Expo / React Native) : interface, persistance locale, logique métier d'accès.
+  \item \textbf{Serveur API} (Flask) : chargement du modèle, endpoint de prédiction, CORS.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[
+    node distance=1.6cm,
+    box/.style={draw,rounded corners,minimum width=3.4cm,minimum height=1cm,align=center},
+    arr/.style={-{Stealth},thick}
+  ]
+    \node[box] (app) {Application\\mobile (Expo)};
+    \node[box, right=3.6cm of app] (api) {API Flask\\+ modèle ML};
+    \node[box, below=1.2cm of app] (sql) {SQLite\\(données locales)};
+    \draw[arr] (app) -- node[above]{HTTP JSON} (api);
+    \draw[arr] (app) -- (sql);
+  \end{tikzpicture}
+  \caption{Architecture logique simplifiée}
+  \label{fig:arch}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  node distance=10mm and 14mm,
+  >=Latex,
+  % Styles
+  startstop/.style={rounded rectangle, thick, draw=black, fill=teal!18, minimum width=40mm, minimum height=8mm, align=center},
+  process/.style={rectangle, thick, draw=black, fill=blue!10, minimum width=44mm, minimum height=8mm, align=center},
+  decision/.style={diamond, aspect=2.2, thick, draw=black, fill=orange!18, inner sep=1.2pt, align=center},
+  store/.style={cylinder, shape border rotate=90, thick, draw=black, fill=gray!15, minimum height=10mm, minimum width=18mm, align=center},
+  service/.style={rectangle, thick, draw=black, fill=purple!12, minimum width=44mm, minimum height=8mm, align=center},
+  screen/.style={rectangle, thick, draw=black, fill=green!12, minimum width=44mm, minimum height=8mm, align=center},
+  note/.style={rectangle, thick, draw=black, fill=yellow!18, minimum width=44mm, minimum height=8mm, align=center},
+  line/.style={thick, -{Latex}},
+  dashedline/.style={thick, dashed, -{Latex}}
+]
+
+% --- Haut : Lancement / init ---
+\node[startstop] (launch) {Lancement App (Expo)};
+\node[process, below=of launch] (initdb) {Init SQLite\\(tables + seed)};
+\node[store, right=22mm of initdb] (sqlite) {SQLite\\local};
+\draw[line] (initdb) -- (sqlite);
+
+\node[decision, below=of initdb] (logged) {Utilisateur\\connecté ?};
+
+\node[screen, below left=of logged] (auth) {Auth\\(Inscription / Login)};
+\node[process, below=of auth] (createuser) {Créer / vérifier\\compte};
+\draw[line] (auth) -- (createuser);
+\draw[line] (createuser) |- (sqlite);
+
+\node[screen, below right=of logged] (home) {Accueil / Tabs};
+
+\draw[line] (launch) -- (initdb);
+\draw[line] (initdb) -- (logged);
+\draw[line] (logged) -- node[above left]{Non} (auth);
+\draw[line] (logged) -- node[above right]{Oui} (home);
+
+% --- Rôle / Admin ---
+\node[decision, right=26mm of home] (isadmin) {Rôle\\admin ?};
+\node[screen, below=of isadmin] (admintab) {Espace Admin};
+
+\draw[line] (home) -- (isadmin);
+\draw[line] (isadmin) -- node[right]{Oui} (admintab);
+
+% --- Admin screens ---
+\node[screen, below left=of admintab] (admindash) {Dashboard Admin\\(métriques)};
+\node[screen, below=of admintab] (adminusers) {Gestion Utilisateurs};
+\node[screen, below right=of admintab] (adminsubs) {Abonnements\\(activation)};
+\node[screen, below=of adminsubs, yshift=-2mm] (adminsupport) {Support\\(tickets)};
+
+\draw[line] (admintab) -- (admindash);
+\draw[line] (admintab) -- (adminusers);
+\draw[line] (admintab) -- (adminsubs);
+\draw[line] (adminsubs) -- (adminsupport);
+
+\draw[line] (admindash) |- (sqlite);
+\draw[line] (adminusers) |- (sqlite);
+\draw[line] (adminsubs) |- (sqlite);
+\draw[line] (adminsupport) |- (sqlite);
+
+\draw[line] (isadmin) |- node[near start, above]{Non} (home);
+
+% --- Modules côté utilisateur ---
+\node[screen, below=14mm of home] (services) {Services / Modules};
+\draw[line] (home) -- (services);
+
+% Stock
+\node[screen, below left=of services] (stock) {Stock\\(CRUD)};
+\draw[line] (services) -- (stock);
+\draw[line] (stock) |- (sqlite);
+
+% Chatbot (FAQ locale)
+\node[screen, below=of services] (chatbot) {Chatbot\\(FAQ locale)};
+\draw[line] (services) -- (chatbot);
+\draw[line] (chatbot) |- (sqlite);
+
+% Support (ticket)
+\node[screen, below right=of services] (support) {Support\\(ticket)};
+\draw[line] (services) -- (support);
+\draw[line] (support) |- (sqlite);
+
+% Prédiction + Gate abonnement
+\node[decision, right=26mm of services] (subgate) {Abonnement\\actif ?};
+\node[screen, below=of subgate] (predict) {Prédiction\\Irrigation};
+\node[note, above=of predict, yshift=-2mm] (pending) {Sinon: Demande\\d'activation};
+
+\draw[line] (services) -- (subgate);
+\draw[line] (subgate) -- node[right]{Oui} (predict);
+\draw[line] (subgate) -- node[above]{Non} (pending);
+\draw[line] (pending) -- (support);
+\draw[line] (subgate) |- (sqlite);
+
+% API Flask + Modèle ML
+\node[service, right=22mm of predict] (api) {API Flask\\(REST)};
+\node[service, below=of api] (ml) {Modèle ML\\(.pkl chargé au démarrage)};
+\draw[dashedline] (predict) -- node[above]{HTTP} (api);
+\draw[line] (api) -- (ml);
+
+% --- Regroupements visuels (cadres) ---
+\node[draw=teal!60!black, thick, rounded corners, fit=(launch)(initdb)(logged)(auth)(home),
+      label={[font=\bfseries]above:App mobile (Expo / React Native)}] (mobilebox) {};
+
+\node[draw=gray!70!black, thick, rounded corners, fit=(sqlite),
+      label={[font=\bfseries]above:Stockage local}] (dbox) {};
+
+\node[draw=purple!60!black, thick, rounded corners, fit=(api)(ml),
+      label={[font=\bfseries]above:Backend Prédiction}] (backendbox) {};
+
+\node[draw=green!60!black, thick, rounded corners, fit=(services)(stock)(chatbot)(support)(subgate)(predict)(pending),
+      label={[font=\bfseries]above:Modules Utilisateur}] (userbox) {};
+
+\node[draw=orange!70!black, thick, rounded corners, fit=(isadmin)(admintab)(admindash)(adminusers)(adminsubs)(adminsupport),
+      label={[font=\bfseries]above:Espace Admin}] (adminbox) {};
+
+\end{tikzpicture}
+\caption{Diagramme de flux global de l'application (auth, modules, admin, prédiction via API).}
+\label{fig:flow-global}
+\end{figure}
+
+\section{Navigation et modules}
+
+La navigation principale s'appuie sur des onglets :
+\begin{itemize}
+  \item Services (pile d'écrans : diagnostic, analyse, prédiction, stock, capteurs, etc.),
+  \item Chatbot,
+  \item Prédiction,
+  \item Support,
+  \item Paramètres,
+  \item \textbf{Admin} (visible uniquement si rôle administrateur).
+\end{itemize}
+
+\section{Modèle de données local (SQLite)}
+
+\subsection{Tables principales}
+\begin{itemize}
+  \item \texttt{users} : comptes, rôle (\texttt{admin}/\texttt{user}), profil.
+  \item \texttt{stocks} : gestion de stock.
+  \item \texttt{subscriptions} : statut d'activation, plan, dates.
+  \item \texttt{predictions} : journalisation locale des prédictions (statistiques).
+  \item \texttt{support\_tickets} : demandes utilisateurs.
+  \item \texttt{chatbot\_faq} : base de questions/réponses.
+\end{itemize}
+
+\subsection{Règles d'accès}
+\begin{itemize}
+  \item Les modules métiers sensibles peuvent être conditionnés par un abonnement \texttt{active}.
+  \item Le support et les paramètres peuvent rester accessibles pour permettre l'assistance et la configuration.
+\end{itemize}
+
+\section{Conception des écrans clés}
+
+\subsection{Prédiction}
+Formulaire structuré, validation des entrées, appel réseau avec gestion timeout, affichage des résultats.
+
+\subsection{Diagnostic (démo)}
+Parcours guidé : description, upload depuis la galerie, résultat « maladie tomate » avec recommandations (démonstration).
+
+\subsection{Support}
+Contacts + formulaire ; tickets visibles dans l'espace admin.
+
+\section{Exigences d'intégration réseau}
+
+\begin{itemize}
+  \item Simulateur iOS : \texttt{http://localhost:PORT}
+  \item Android émulateur : \texttt{http://10.0.2.2:PORT}
+  \item Téléphone physique : \texttt{http://IP\_LAN\_DU\_PC:PORT}
+\end{itemize}
+
+\section{Sécurité et éthique (conception)}
+
+\begin{itemize}
+  \item Les prédictions sont des aides à la décision, pas des prescriptions légales agronomiques sans validation terrain.
+  \item Renforcer l'authentification et le stockage des secrets en production.
+\end{itemize}
+
+\cleardoublepage
+
+% =============================================================================
+\chapter{Réalisation, technologies et mise en œuvre}
+% =============================================================================
+
+\section{Environnement de développement}
+
+\begin{itemize}
+  \item \textbf{Mobile :} JavaScript / React Native via Expo SDK.
+  \item \textbf{API :} Python 3, Flask.
+  \item \textbf{ML :} scikit-learn, XGBoost, pandas, numpy, joblib.
+\end{itemize}
+
+\section{Technologies et bibliothèques}
+
+\subsection{Côté mobile}
+\begin{itemize}
+  \item React Navigation (stack + onglets),
+  \item Axios (client HTTP),
+  \item Expo SQLite (persistance),
+  \item AsyncStorage (session utilisateur),
+  \item composants UI (écrans, listes, formulaires).
+\end{itemize}
+
+\subsection{Côté API}
+\begin{itemize}
+  \item Flask + flask-cors,
+  \item joblib pour chargement du pipeline,
+  \item pandas pour jointures/agrégations climatiques.
+\end{itemize}
+
+\section{Réalisation des fonctionnalités}
+
+\subsection{Authentification locale}
+Création d'utilisateur, connexion, persistance de l'identifiant courant.
+
+\subsection{Module de prédiction}
+Implémentation de l'appel \texttt{POST /predict}, gestion des erreurs réseau, journalisation des prédictions.
+
+\subsection{Administration}
+Écrans de gestion : utilisateurs, abonnements, support, indicateurs agrégés.
+
+\section{Tests et validation}
+
+\subsection{Tests manuels recommandés}
+\begin{enumerate}
+  \item Démarrage API + vérification \texttt{/get-options}.
+  \item Prédiction avec cas nominal (tomate, été, sol, etc.).
+  \item Cas réseau incorrect (mauvaise IP) : message utilisateur explicite.
+  \item Parcours admin : activation abonnement, consultation tickets.
+\end{enumerate}
+
+\subsection{Tests automatiques (perspectives)}
+\begin{itemize}
+  \item tests unitaires API (pytest),
+  \item tests d'intégration sur pipeline ML,
+  \item tests E2E mobile (Detox / Maestro) — optionnel.
+\end{itemize}
+
+\section{Déploiement et exploitation}
+
+\begin{itemize}
+  \item Exécution locale pour démonstration : \texttt{./venv/bin/python app.py} avec port configurable.
+  \item Build mobile : Expo EAS / publication stores (hors scope détaillé ici).
+\end{itemize}
+
+\section{Livrables}
+
+\begin{itemize}
+  \item Code source application + API,
+  \item modèle \texttt{modele\_xgboost\_pipeline.pkl},
+  \item notebook de modélisation,
+  \item présentation / rapport LaTeX.
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\chapter*{Conclusion et perspectives}
+\addcontentsline{toc}{chapter}{Conclusion et perspectives}
+
+OLLA+ propose une réponse structurée à la gestion agricole « de A à Z » avec un axe fort sur la prédiction de consommation d'eau. La séparation entre interface mobile, persistance locale et API ML facilite la maintenance et l'évolution. Les perspectives incluent le durcissement sécuritaire, l'intégration de capteurs réels, l'amélioration du diagnostic par vision par ordinateur, et un déploiement cloud complet.
+
+\cleardoublepage
+
+% =============================================================================
+\appendix
+\chapter{Guide de compilation du présent document}
+% =============================================================================
+
+Pour compiler ce rapport :
+\begin{verbatim}
+pdflatex Rapport_OLLA_Plus.tex
+pdflatex Rapport_OLLA_Plus.tex
+\end{verbatim}
+
+Si vous ajoutez une bibliographie Bib\TeX{} :
+\begin{verbatim}
+pdflatex Rapport_OLLA_Plus.tex
+bibtex Rapport_OLLA_Plus
+pdflatex Rapport_OLLA_Plus.tex
+pdflatex Rapport_OLLA_Plus.tex
+\end{verbatim}
+
+\chapter{Suggestions pour atteindre 40--60 pages}
+
+\begin{itemize}
+  \item Ajouter 15--25 captures d'écran commentées (parcours utilisateur, admin, erreurs réseau).
+  \item Insérer le \textbf{notebook} exporté en PDF ou des extraits de code annotés (EDA complète, matrices de corrélation, courbes d'apprentissage).
+  \item Rédiger un état de l'art (10--15 pages) : agriculture de précision, irrigation, ML en agronomie.
+  \item Ajouter annexes : cahier des charges détaillé, questionnaire utilisateurs, planning Gantt, analyse de risques.
+  \item Documenter précisément les métriques finales et interpréter les écarts.
+\end{itemize}
+
+\end{document}

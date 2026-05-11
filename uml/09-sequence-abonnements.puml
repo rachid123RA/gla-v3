@@ -1,0 +1,40 @@
+@startuml sequence-abonnements
+!theme plain
+autonumber
+skinparam shadowing false
+title Séquence — Cycle abonnement (demande client + activation administrateur)
+
+actor Client
+participant "SubscriptionGate" as Gate
+participant "subscriptionService" as SubC
+participant "databaseService" as DB
+database "SQLite" as SQL
+actor Admin
+participant "AdminSubscriptionsScreen" as Adm
+
+== Inscription / compte en attente ==
+Client -> Gate : Ouvre fonctionnalité premium\n(chatbot / prédiction)
+Gate -> SubC : getSubscriptionStatusForCurrentUser()
+SubC -> DB : lecture subscription
+DB --> Gate : status = pending
+Gate --> Client : Bouton « Demander activation »
+Client -> SubC : ensureActivationRequest()
+SubC -> DB : requestActivationForUser\n(met pending si besoin)
+DB -> SQL : UPDATE subscriptions
+
+== Activation par l'admin ==
+Admin -> Adm : Liste abonnements + filtres
+Adm -> DB : getSubscriptions()
+DB --> Adm : lignes jointes users
+Admin -> Adm : Choisir utilisateur,\nplan (free/basic/pro),\nstatut active + durée
+Adm -> DB : upsertSubscription(userId, plan, active, endsAt)
+DB -> SQL : UPDATE ou INSERT
+Admin -> Adm : Rafraîchir liste
+
+== Côté client après activation ==
+Client -> Gate : Réouverture onglet
+Gate -> SubC : getSubscriptionStatusForCurrentUser()
+SubC --> Gate : status = active
+Gate --> Client : Affiche Chatbot / Prédiction
+
+@enduml

@@ -1,0 +1,39 @@
+@startuml cas-utilisation-admin
+!theme plain
+left to right direction
+skinparam shadowing false
+title Cas d'utilisation — Administrateur
+
+actor Admin
+
+rectangle "MonAppIA — espace admin" {
+  usecase "Voir le tableau de bord\n(métriques agrégées)" as UC1
+  usecase "Lister les utilisateurs" as UC2
+  usecase "Promouvoir / rétrograder\nun utilisateur (rôle)" as UC3
+  usecase "Supprimer un utilisateur\n(sauf soi-même)" as UC4
+  usecase "Lister les abonnements" as UC5
+  usecase "Créer / mettre à jour\nabonnement (plan, statut, durée)" as UC6
+  usecase "Supprimer un abonnement" as UC7
+  usecase "Consulter les tickets support" as UC8
+  usecase "Mettre à jour le statut\nd'un ticket" as UC9
+  usecase "Accès direct chatbot /\nprédiction (sans gate)" as UC10
+}
+
+Admin --> UC1
+Admin --> UC2
+Admin --> UC3
+Admin --> UC4
+Admin --> UC5
+Admin --> UC6
+Admin --> UC7
+Admin --> UC8
+Admin --> UC9
+Admin --> UC10
+
+UC3 ..> UC2 : <<include>>
+UC4 ..> UC2 : <<include>>
+UC6 ..> UC5 : <<include>>
+UC7 ..> UC5 : <<include>>
+UC9 ..> UC8 : <<include>>
+
+@enduml

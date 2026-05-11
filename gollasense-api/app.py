@@ -5,9 +5,15 @@ import math
 import pandas as pd
 import joblib
 from datetime import datetime
+from pathlib import Path
 from utils.pdf_generator import generate_pdf
 import warnings
 import os
+
+# Toujours résoudre modèle / CSV par rapport à ce fichier (évite l’échec si python est lancé depuis un autre cwd)
+API_ROOT = Path(__file__).resolve().parent
+MODEL_PATH = API_ROOT / "model" / "modele_xgboost_pipeline.pkl"
+DATASET_PATH = API_ROOT / "golla_dataset_100k_no_accents.csv"
 
 # Supprimer les avertissements de version sklearn/xgboost
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -20,11 +26,11 @@ CORS(app)
 print("Chargement du modèle...")
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    model = joblib.load("model/modele_xgboost_pipeline.pkl")
+    model = joblib.load(MODEL_PATH)
 print("Modèle chargé avec succès!")
 
 print("Chargement du dataset...")
-df_ref = pd.read_csv("golla_dataset_100k_no_accents.csv")
+df_ref = pd.read_csv(DATASET_PATH)
 print(f"Dataset chargé: {len(df_ref)} lignes")
 
 # Fonctions utiles
@@ -84,6 +90,12 @@ def get_options():
     })
 
 SAISONS_VALIDES = frozenset({"printemps", "ete", "automne", "hiver"})
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Vérifie que l’API et le modèle sont prêts (utile pour déboguer les erreurs réseau côté app)."""
+    return jsonify({"ok": True, "model_loaded": model is not None})
 
 
 @app.route('/predict', methods=['POST'])

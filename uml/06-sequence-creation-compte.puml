@@ -1,0 +1,35 @@
+@startuml sequence-creation-compte
+!theme plain
+autonumber
+skinparam shadowing false
+title Séquence — Création de compte (inscription)
+
+actor Utilisateur
+participant "InscriptionScreen" as UI
+participant "authService" as Auth
+participant "databaseService" as DB
+database "SQLite" as SQL
+participant "AsyncStorage" as AS
+
+Utilisateur -> UI : Remplir formulaire\n(nom, email, mdp, date, photo?)
+UI -> Auth : creerCompte(email, password, nom, date, image)
+Auth -> DB : initDatabase() (si besoin)
+Auth -> DB : createUser(...)
+DB -> SQL : INSERT users (role défaut 'user')
+alt email déjà pris
+  SQL --> DB : contrainte UNIQUE
+  DB --> Auth : success=false
+  Auth --> UI : erreur
+else succès
+  SQL --> DB : lastInsertRowId
+  DB --> Auth : success + userId
+  Auth -> DB : getUserById(userId)
+  DB --> Auth : données utilisateur
+  Auth -> DB : ensureSubscriptionForUser(userId)
+  DB -> SQL : subscription free / pending
+  Auth -> AS : setCurrentUser(userId)
+  Auth --> UI : success + user
+  UI --> Utilisateur : Alerte succès\n(App bascule vers onglets\nvia polling état session)
+end
+
+@enduml

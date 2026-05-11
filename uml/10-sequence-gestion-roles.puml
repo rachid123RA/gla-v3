@@ -1,0 +1,44 @@
+@startuml sequence-gestion-roles
+!theme plain
+autonumber
+skinparam shadowing false
+title Séquence — Gestion des rôles (admin)
+
+actor Admin
+participant "AdminUsersScreen" as UI
+participant "databaseService" as DB
+participant "authService" as Auth
+database "SQLite" as SQL
+
+Admin -> UI : Afficher liste utilisateurs
+UI -> DB : getAllUsers()
+DB -> SQL : SELECT users (sans mdp dans logique liste\n— écran reçoit champs publics)
+SQL --> DB : rows
+DB --> UI : liste
+
+Admin -> UI : Action « permuter rôle »\n(user <-> admin)
+UI -> Auth : obtenirUtilisateurActuel()
+Auth --> UI : admin courant
+alt cible = admin connecté
+  UI --> Admin : Refus (ne pas modifier son propre rôle)
+else autre utilisateur
+  UI -> DB : setUserRole(userId, newRole)
+  DB -> SQL : UPDATE users SET role
+  DB --> UI : OK
+  UI -> UI : reload liste
+  UI --> Admin : Liste à jour
+end
+
+Admin -> UI : Suppression utilisateur (option)
+alt cible = soi-même
+  UI --> Admin : Refus
+else autre
+  UI -> DB : deleteUser(userId)
+  DB -> SQL : DELETE (CASCADE subscriptions)
+end
+
+note right of SQL
+  L'onglet « Admin » n'apparaît dans l'UI\nque si role == admin (App.js).
+end note
+
+@enduml

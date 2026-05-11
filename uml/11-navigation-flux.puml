@@ -1,0 +1,62 @@
+@startuml navigation-flux
+!theme plain
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #E8F5E9
+  BorderColor #1B5E20
+}
+title Navigation et flux d'écrans (React Navigation)
+
+state "Non connecté" as Guest {
+  state "Accueil" as A
+  state "Connexion" as C
+  state "Inscription" as I
+  [*] --> A
+  A --> C : Login
+  A --> I : Register
+  C --> A
+  I --> A
+}
+
+state "Connecté — Tabs" as Logged {
+  state "Services (Tab)" as S {
+    state "ServicesMain" as SM
+    state "Diagnostic" as D
+    state "Analyse" as An
+    state "Stock" as St
+    state "Capteur" as Ca
+    state "Prediction (stack)" as Pstack
+    state "Chatbot (stack)" as Ch
+    state "Paramètres (stack)" as Pset
+    SM --> D
+    SM --> An
+    SM --> St
+    SM --> Ca
+    SM --> Pstack
+    SM --> Ch
+    SM --> Pset
+  }
+  state "Chatbot (Tab)" as CT
+  state "Prediction (Tab)" as PT
+  state "Support (Tab)" as Su
+  state "Paramètres (Tab)" as Pa
+  state "Admin (Tab)\n[si role=admin]" as Ad {
+    state "AdminDashboard" as AD
+    state "AdminUsers" as AU
+    state "AdminSubscriptions" as ASu
+    state "AdminSupport" as ASup
+    AD --> AU
+    AD --> ASu
+    AD --> ASup
+  }
+}
+
+Guest --> Logged : session AsyncStorage +\nutilisateur SQLite valide
+
+note bottom of Logged
+  Chatbot / Prediction (onglets) : SubscriptionGate
+  pour role=user jusqu'à abonnement actif.
+  Admin : pas de gate sur ces onglets.
+end note
+
+@enduml

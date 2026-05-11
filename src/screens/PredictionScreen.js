@@ -222,10 +222,10 @@ const PredictionScreen = () => {
       } else if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
         errorMessage =
           `Impossible de se connecter à l'API (${API_URL}). Assurez-vous que:\n\n` +
-          `1. L'API Flask est démarrée (dans gollasense-api: python app.py)\n` +
-          `2. Si vous êtes sur téléphone: utilisez l'IP du PC via EXPO_PUBLIC_API_URL\n` +
-          `3. Le pare-feu autorise le port 5000\n\n` +
-          `Astuce:\n- Android émulateur: ${'http://10.0.2.2:5000'}\n- iOS simulateur/Web: ${'http://localhost:5000'}`;
+          `1. L'API Flask tourne (dossier gollasense-api: python app.py) — test navigateur: ${API_URL}/health\n` +
+          `2. Sur téléphone physique: EXPO_PUBLIC_API_URL=http://VOTRE_IP_LAN:5001 (même Wi‑Fi que le PC)\n` +
+          `3. Pare-feu: autoriser le port 5001\n\n` +
+          `Références:\n- Émulateur Android: http://10.0.2.2:5001\n- Simulateur iOS / Web: http://localhost:5001`;
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       }

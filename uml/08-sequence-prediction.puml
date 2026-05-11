@@ -1,0 +1,43 @@
+@startuml sequence-prediction
+!theme plain
+autonumber
+skinparam shadowing false
+title Séquence — Prédiction d'irrigation (client avec abonnement actif ou admin)
+
+actor Utilisateur
+participant "PredictionScreen" as UI
+participant "SubscriptionGate\n(ou contournement admin)" as Gate
+participant "subscriptionService" as Sub
+participant "databaseService" as DB
+participant "API Flask\n/predict" as API
+participant "Modèle XGBoost" as ML
+database "SQLite" as SQL
+
+Utilisateur -> UI : Onglet Prédiction
+alt rôle != admin
+  UI -> Gate : rendu enfants
+  Gate -> Sub : getSubscriptionStatusForCurrentUser()
+  Sub -> DB : ensureSubscriptionForUser + getSubscriptionByUserId
+  DB -> SQL : lecture subscriptions
+  alt status != active
+    Sub --> Gate : pending / expired
+    Gate --> Utilisateur : écran « Demander activation »
+  else status == active
+    Sub --> Gate : active
+    Gate -> UI : affiche PredictionScreen
+  end
+else rôle admin
+  UI -> UI : accès direct sans gate
+end
+
+Utilisateur -> UI : Choisir plante, saison, sol, état,\nsurface, âge → Calculer
+UI -> API : POST /predict (JSON)
+API -> API : météo moyenne depuis CSV,\nfeatures, pipeline
+API -> ML : predict()
+ML --> API : litres/jour
+API --> UI : prediction_m2, totale,\nindice_stress, conseil
+UI -> DB : recordPrediction(userId)
+DB -> SQL : INSERT predictions
+UI --> Utilisateur : Affichage résultat\n(export PDF optionnel via /generate-pdf)
+
+@enduml

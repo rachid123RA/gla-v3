@@ -1,0 +1,39 @@
+@startuml cas-utilisation-client
+!theme plain
+left to right direction
+skinparam shadowing false
+title Cas d'utilisation — Client (utilisateur « user »)
+
+actor Client
+
+rectangle "MonAppIA — espace client" {
+  usecase "Consulter l'accueil /\nchoisir inscription ou connexion" as UC0
+  usecase "S'inscrire\n(profil + photo optionnelle)" as UC1
+  usecase "Se connecter /\nse déconnecter" as UC2
+  usecase "Parcourir les services\n(diagnostic, analyse, stock, capteur)" as UC3
+  usecase "Consulter / modifier\nle profil (paramètres)" as UC4
+  usecase "Demander l'activation\nabonnement (pending)" as UC5
+  usecase "Utiliser le chatbot\n(si abonnement actif)" as UC6
+  usecase "Lancer une prédiction\nd'irrigation (si actif)" as UC7
+  usecase "Consulter résultats /\nexporter PDF (API)" as UC8
+  usecase "Créer un ticket support" as UC9
+}
+
+Client --> UC0
+Client --> UC1
+Client --> UC2
+Client --> UC3
+Client --> UC4
+Client --> UC5
+UC6 .> UC5 : <<include>>\n(vérification statut)
+UC7 .> UC5 : <<include>>
+UC8 ..> UC7 : <<extend>>\n(après calcul)
+Client --> UC9
+
+note right of UC5
+  SubscriptionGate bloque UC6/UC7
+  tant que status != active
+  (les admins passent sans gate).
+end note
+
+@enduml

@@ -25,6 +25,13 @@ plantuml uml/*.puml
 
 https://github.com/rachid123RA/gla-v3
 
+### Push en 1 clic (Cursor / VS Code)
+
+1. **Une seule fois** : dans le terminal, `npm run setup` → coller votre token GitHub ([créer un token](https://github.com/settings/tokens), scope **repo**).
+2. **Ensuite** : cliquer **Run** sur `npm run push` (ou tâche **▶ Push GitHub** dans le menu Terminal → Run Task).
+
+Commande manuelle équivalente : `npm run push`
+
 ## Prérequis
 
 - Node.js (LTS recommandé)

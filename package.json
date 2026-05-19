@@ -8,6 +8,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "push:github": "bash scripts/push-github.sh",
+    "push": "bash scripts/push-github.sh",
+    "github:token": "bash scripts/save-github-token.sh",
     "github:setup": "bash scripts/setup-github-auth.sh"
   },
   "dependencies": {

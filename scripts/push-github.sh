@@ -6,8 +6,17 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# Token automatique : .env.local (une seule config) ou variable d'environnement
+if [ -f .env.local ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env.local
+  set +a
+fi
+
 BRANCH="${GIT_BRANCH:-main}"
 MSG="${1:-chore: mise à jour automatique MonAppIA}"
+REPO="rachid123RA/GLA-V2-manar"
 
 echo "==> Branche: $BRANCH"
 echo "==> Message: $MSG"
@@ -28,11 +37,15 @@ if [ "$AHEAD" = "0" ]; then
 fi
 
 echo "==> Push vers GitHub..."
-if [ -n "$GITHUB_TOKEN" ]; then
-  # Token dans l'environnement (CI ou export manuel)
-  git push "https://${GITHUB_TOKEN}@github.com/rachid123RA/GLA-V2-manar.git" "$BRANCH"
-else
-  git push origin "$BRANCH"
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo ""
+  echo "ERREUR: pas de token GitHub."
+  echo "Lancez UNE FOIS:  npm run github:token"
+  echo "Puis:             npm run push:github"
+  echo ""
+  exit 1
 fi
 
-echo "==> OK — code sur GitHub."
+git push "https://${GITHUB_TOKEN}@github.com/${REPO}.git" "$BRANCH"
+
+echo "==> OK — code sur GitHub: https://github.com/${REPO}"

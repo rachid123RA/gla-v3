@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,36 +10,57 @@ import {
   Alert,
   Image,
   Modal,
+  Switch,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { 
-  obtenirUtilisateurActuel, 
-  seDeconnecter 
-} from '../services/authService';
-import { 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { obtenirUtilisateurActuel, seDeconnecter } from '../services/authService';
+import {
   updateUserProfileImage,
-  updateUser
+  updateUser,
+  updateUserPassword,
 } from '../services/databaseService';
+import { persistProfileImage } from '../services/profileImageService';
+
+const STORAGE_NOTIFICATIONS = 'settings_notifications';
+const STORAGE_LANGUAGE = 'settings_language';
+
+const SECTION_COLORS = {
+  profil: { bg: '#E8F5E9', border: '#2E7D32', accent: '#1B5E20' },
+  compte: { bg: '#E3F2FD', border: '#1565C0', accent: '#0D47A1' },
+  app: { bg: '#FFF8E1', border: '#F9A825', accent: '#F57F17' },
+};
 
 const ParametresScreen = () => {
   const navigation = useNavigation();
+  const canGoBack = navigation.canGoBack();
+
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
+
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [aboutModalVisible, setAboutModalVisible] = useState(false);
+
   const [imageProfil, setImageProfil] = useState(null);
-  
-  // États pour le formulaire de modification
   const [nom, setNom] = useState('');
   const [email, setEmail] = useState('');
   const [dateNaissance, setDateNaissance] = useState('');
 
-  useEffect(() => {
-    loadUserData();
-  }, []);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  const loadUserData = async () => {
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [language, setLanguage] = useState('Français');
+
+  const loadUserData = useCallback(async () => {
     try {
       const currentUser = await obtenirUtilisateurActuel();
       if (currentUser) {
@@ -52,267 +73,464 @@ const ParametresScreen = () => {
     } catch (error) {
       console.error('Erreur chargement données utilisateur:', error);
     }
-  };
+  }, []);
 
-  const pickImage = async () => {
+  const loadPreferences = useCallback(async () => {
+    try {
+      const notif = await AsyncStorage.getItem(STORAGE_NOTIFICATIONS);
+      if (notif !== null) setNotificationsEnabled(notif === 'true');
+      const lang = await AsyncStorage.getItem(STORAGE_LANGUAGE);
+      if (lang) setLanguage(lang);
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData();
+    }, [loadUserData])
+  );
+
+  const pickImage = async (saveImmediately = true) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', 'Nous avons besoin de votre permission pour accéder à vos photos.');
+      Alert.alert(
+        'Permission requise',
+        'Autorisez l’accès aux photos pour changer votre image de profil.'
+      );
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    let result;
+    try {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+    } catch (e) {
+      Alert.alert('Erreur', 'Impossible d’ouvrir la galerie photos.');
+      return;
+    }
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageProfil(result.assets[0].uri);
+    if (result.canceled || !result.assets?.length) return;
+
+    const pickedUri = result.assets[0].uri;
+    if (!userData?.id) {
+      setImageProfil(pickedUri);
+      return;
+    }
+
+    setSavingImage(true);
+    try {
+      const persisted = await persistProfileImage(userData.id, pickedUri);
+      if (!persisted.success) {
+        Alert.alert('Erreur', persisted.error || 'Impossible de sauvegarder la photo.');
+        return;
+      }
+
+      const permanentUri = persisted.uri;
+      setImageProfil(permanentUri);
+
+      if (!saveImmediately) return;
+
+      const res = await updateUserProfileImage(userData.id, permanentUri);
+      if (res.success) {
+        setUserData((prev) => (prev ? { ...prev, imageProfil: permanentUri } : prev));
+        Alert.alert('Succès', 'Photo de profil enregistrée.');
+      } else {
+        Alert.alert('Erreur', res.error || 'Impossible d’enregistrer la photo.');
+      }
+    } catch {
+      Alert.alert('Erreur', 'Une erreur est survenue lors de l’enregistrement de la photo.');
+    } finally {
+      setSavingImage(false);
     }
   };
 
   const handleUpdateProfile = async () => {
-    if (!nom) {
-      Alert.alert('Erreur', 'Le nom est obligatoire');
+    if (!nom.trim()) {
+      Alert.alert('Erreur', 'Le nom est obligatoire.');
       return;
     }
 
     setLoading(true);
     try {
-      // Mettre à jour les informations utilisateur
+      let finalImageUri = imageProfil;
+      if (imageProfil) {
+        const persisted = await persistProfileImage(userData.id, imageProfil);
+        if (!persisted.success) {
+          Alert.alert('Erreur', persisted.error || 'Impossible de sauvegarder la photo.');
+          return;
+        }
+        finalImageUri = persisted.uri;
+        setImageProfil(finalImageUri);
+      }
+
       const result = await updateUser(
         userData.id,
-        nom,
-        dateNaissance,
-        imageProfil !== userData.imageProfil ? imageProfil : null
+        nom.trim(),
+        dateNaissance.trim(),
+        finalImageUri
       );
 
       if (result.success) {
-        Alert.alert('Succès', 'Profil mis à jour avec succès');
-        setModalVisible(false);
-        loadUserData();
+        Alert.alert('Succès', 'Profil mis à jour avec succès.');
+        setProfileModalVisible(false);
+        await loadUserData();
       } else {
-        Alert.alert('Erreur', result.error || 'Impossible de mettre à jour le profil');
+        Alert.alert('Erreur', result.error || 'Impossible de mettre à jour le profil.');
       }
-    } catch (error) {
-      Alert.alert('Erreur', 'Une erreur est survenue lors de la mise à jour');
+    } catch {
+      Alert.alert('Erreur', 'Une erreur est survenue lors de la mise à jour.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeconnexion = () => {
-    Alert.alert(
-      'Déconnexion',
-      'Êtes-vous sûr de vouloir vous déconnecter ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Déconnexion',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await seDeconnecter();
-              // La navigation sera gérée automatiquement par App.js
-            } catch (error) {
-              Alert.alert('Erreur', 'Une erreur est survenue lors de la déconnexion');
-            }
-          },
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Erreur', 'Les nouveaux mots de passe ne correspondent pas.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert('Erreur', 'Le nouveau mot de passe doit contenir au moins 6 caractères.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await updateUserPassword(userData.id, currentPassword, newPassword);
+      if (result.success) {
+        Alert.alert('Succès', 'Mot de passe modifié avec succès.');
+        setPasswordModalVisible(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        Alert.alert('Erreur', result.error || 'Impossible de modifier le mot de passe.');
+      }
+    } catch {
+      Alert.alert('Erreur', 'Une erreur est survenue.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleNotifications = async (value) => {
+    setNotificationsEnabled(value);
+    await AsyncStorage.setItem(STORAGE_NOTIFICATIONS, value ? 'true' : 'false');
+  };
+
+  const chooseLanguage = () => {
+    Alert.alert('Langue', 'Choisissez la langue de l’interface', [
+      {
+        text: 'Français',
+        onPress: async () => {
+          setLanguage('Français');
+          await AsyncStorage.setItem(STORAGE_LANGUAGE, 'Français');
         },
-      ]
+      },
+      {
+        text: 'العربية',
+        onPress: async () => {
+          setLanguage('العربية');
+          await AsyncStorage.setItem(STORAGE_LANGUAGE, 'العربية');
+        },
+      },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
+  };
+
+  const openThemeInfo = () => {
+    Alert.alert(
+      'Thème',
+      'Le thème clair est actuellement actif. Le thème sombre sera disponible dans une prochaine version.'
     );
+  };
+
+  const goToSupport = () => {
+    try {
+      navigation.navigate('Support');
+    } catch {
+      Alert.alert('Support', 'Ouvrez l’onglet Support depuis le menu principal.');
+    }
+  };
+
+  const handleDeconnexion = () => {
+    Alert.alert('Déconnexion', 'Êtes-vous sûr de vouloir vous déconnecter ?', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Déconnexion',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await seDeconnecter();
+          } catch {
+            Alert.alert('Erreur', 'Une erreur est survenue lors de la déconnexion.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const openProfileModal = () => {
+    setNom(userData?.nom || '');
+    setDateNaissance(userData?.dateNaissance || '');
+    setImageProfil(userData?.imageProfil || null);
+    setProfileModalVisible(true);
   };
 
   if (!userData) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text>Chargement...</Text>
+          <ActivityIndicator size="large" color="#2c5f2d" />
+          <Text style={styles.loadingText}>Chargement...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  const renderMenuItem = ({
+    icon,
+    label,
+    onPress,
+    sectionKey,
+    rightElement,
+    disabled,
+  }) => (
+    <TouchableOpacity
+      style={[
+        styles.menuItem,
+        { backgroundColor: SECTION_COLORS[sectionKey].bg, borderColor: SECTION_COLORS[sectionKey].border },
+        disabled && styles.menuItemDisabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.menuIconWrap, { backgroundColor: SECTION_COLORS[sectionKey].accent }]}>
+        <Ionicons name={icon} size={22} color="#fff" />
+      </View>
+      <Text style={styles.menuItemText}>{label}</Text>
+      {rightElement || <Ionicons name="chevron-forward" size={20} color={SECTION_COLORS[sectionKey].accent} />}
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
+        {canGoBack ? (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#1B5E20" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
         <Text style={styles.headerTitle}>Paramètres</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Section Profil */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Profil</Text>
-          
-          <View style={styles.profileCard}>
-            <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
+        {/* Profil — vert */}
+        <View style={[styles.section, styles.sectionProfil]}>
+          <Text style={[styles.sectionTitle, { color: SECTION_COLORS.profil.accent }]}>Profil</Text>
+          <View style={[styles.profileCard, { borderColor: SECTION_COLORS.profil.border }]}>
+            <TouchableOpacity
+              onPress={() => pickImage(true)}
+              style={styles.profileImageContainer}
+              disabled={savingImage}
+            >
               {imageProfil ? (
-                <Image source={{ uri: imageProfil }} style={styles.profileImage} />
+                <Image
+                  key={imageProfil}
+                  source={{ uri: imageProfil }}
+                  style={styles.profileImage}
+                />
               ) : (
                 <View style={styles.profileImagePlaceholder}>
                   <Ionicons name="person" size={40} color="#888" />
                 </View>
               )}
-              <View style={styles.editImageButton}>
-                <Ionicons name="camera" size={16} color="#fff" />
+              <View style={[styles.editImageButton, { backgroundColor: SECTION_COLORS.profil.accent }]}>
+                {savingImage ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="camera" size={16} color="#fff" />
+                )}
               </View>
             </TouchableOpacity>
-            
+            <Text style={styles.photoHint}>Appuyez sur la photo pour la changer</Text>
+
             <View style={styles.profileInfo}>
               <Text style={styles.userName}>{userData.nom?.toUpperCase()}</Text>
               <Text style={styles.userEmail}>{userData.email}</Text>
-              {userData.dateNaissance && (
-                <Text style={styles.userDate}>{userData.dateNaissance}</Text>
+              {userData.role === 'admin' && (
+                <View style={styles.roleBadge}>
+                  <Text style={styles.roleBadgeText}>Administrateur</Text>
+                </View>
               )}
+              {userData.dateNaissance ? (
+                <Text style={styles.userDate}>{userData.dateNaissance}</Text>
+              ) : null}
             </View>
 
             <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => setModalVisible(true)}
+              style={[styles.sectionButton, { backgroundColor: SECTION_COLORS.profil.accent }]}
+              onPress={openProfileModal}
             >
-              <Ionicons name="create-outline" size={20} color="#2c5f2d" />
-              <Text style={styles.editButtonText}>Modifier le profil</Text>
+              <Ionicons name="create-outline" size={20} color="#fff" />
+              <Text style={styles.sectionButtonText}>Modifier le profil</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Section Compte */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Compte</Text>
-          
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="person-outline" size={24} color="#2c5f2d" />
-            <Text style={styles.menuItemText}>Informations personnelles</Text>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="lock-closed-outline" size={24} color="#2c5f2d" />
-            <Text style={styles.menuItemText}>Changer le mot de passe</Text>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="notifications-outline" size={24} color="#2c5f2d" />
+        {/* Compte — bleu */}
+        <View style={[styles.section, styles.sectionCompte]}>
+          <Text style={[styles.sectionTitle, { color: SECTION_COLORS.compte.accent }]}>Compte</Text>
+          {renderMenuItem({
+            icon: 'person-outline',
+            label: 'Informations personnelles',
+            onPress: openProfileModal,
+            sectionKey: 'compte',
+          })}
+          {renderMenuItem({
+            icon: 'lock-closed-outline',
+            label: 'Changer le mot de passe',
+            onPress: () => {
+              setCurrentPassword('');
+              setNewPassword('');
+              setConfirmPassword('');
+              setPasswordModalVisible(true);
+            },
+            sectionKey: 'compte',
+          })}
+          <View
+            style={[
+              styles.menuItem,
+              styles.menuItemRow,
+              {
+                backgroundColor: SECTION_COLORS.compte.bg,
+                borderColor: SECTION_COLORS.compte.border,
+              },
+            ]}
+          >
+            <View style={[styles.menuIconWrap, { backgroundColor: SECTION_COLORS.compte.accent }]}>
+              <Ionicons name="notifications-outline" size={22} color="#fff" />
+            </View>
             <Text style={styles.menuItemText}>Notifications</Text>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={toggleNotifications}
+              trackColor={{ false: '#ccc', true: '#90CAF9' }}
+              thumbColor={notificationsEnabled ? SECTION_COLORS.compte.accent : '#f4f3f4'}
+            />
+          </View>
         </View>
 
-        {/* Section Application */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Application</Text>
-          
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="language-outline" size={24} color="#2c5f2d" />
-            <Text style={styles.menuItemText}>Langue</Text>
-            <Text style={styles.menuItemValue}>Français</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="moon-outline" size={24} color="#2c5f2d" />
-            <Text style={styles.menuItemText}>Thème</Text>
-            <Text style={styles.menuItemValue}>Clair</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="help-circle-outline" size={24} color="#2c5f2d" />
-            <Text style={styles.menuItemText}>Aide et support</Text>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="information-circle-outline" size={24} color="#2c5f2d" />
-            <Text style={styles.menuItemText}>À propos</Text>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
+        {/* Application — ambre */}
+        <View style={[styles.section, styles.sectionApp]}>
+          <Text style={[styles.sectionTitle, { color: SECTION_COLORS.app.accent }]}>Application</Text>
+          {renderMenuItem({
+            icon: 'language-outline',
+            label: 'Langue',
+            onPress: chooseLanguage,
+            sectionKey: 'app',
+            rightElement: <Text style={styles.menuItemValue}>{language}</Text>,
+          })}
+          {renderMenuItem({
+            icon: 'moon-outline',
+            label: 'Thème',
+            onPress: openThemeInfo,
+            sectionKey: 'app',
+            rightElement: <Text style={styles.menuItemValue}>Clair</Text>,
+          })}
+          {renderMenuItem({
+            icon: 'help-circle-outline',
+            label: 'Aide et support',
+            onPress: goToSupport,
+            sectionKey: 'app',
+          })}
+          {renderMenuItem({
+            icon: 'information-circle-outline',
+            label: 'À propos',
+            onPress: () => setAboutModalVisible(true),
+            sectionKey: 'app',
+          })}
         </View>
 
-        {/* Bouton Déconnexion */}
-        <TouchableOpacity
-          style={styles.deconnexionButton}
-          onPress={handleDeconnexion}
-        >
+        <TouchableOpacity style={styles.deconnexionButton} onPress={handleDeconnexion}>
           <Ionicons name="log-out-outline" size={24} color="#fff" />
           <Text style={styles.deconnexionButtonText}>Déconnexion</Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Modal Modification Profil */}
+      {/* Modal profil */}
       <Modal
         animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        transparent
+        visible={profileModalVisible}
+        onRequestClose={() => setProfileModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Modifier le profil</Text>
-              <TouchableOpacity
-                onPress={() => setModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={24} color="#000" />
+            <View style={[styles.modalHeader, { borderBottomColor: SECTION_COLORS.profil.border }]}>
+              <Text style={[styles.modalTitle, { color: SECTION_COLORS.profil.accent }]}>
+                Modifier le profil
+              </Text>
+              <TouchableOpacity onPress={() => setProfileModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
             </View>
-
-            <ScrollView style={styles.modalBody}>
-              <TouchableOpacity onPress={pickImage} style={styles.modalProfileImageContainer}>
+            <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+              <TouchableOpacity onPress={() => pickImage(false)} style={styles.modalProfileImageContainer}>
                 {imageProfil ? (
-                  <Image source={{ uri: imageProfil }} style={styles.modalProfileImage} />
+                  <Image
+                    key={`modal-${imageProfil}`}
+                    source={{ uri: imageProfil }}
+                    style={styles.modalProfileImage}
+                  />
                 ) : (
                   <View style={styles.modalProfileImagePlaceholder}>
                     <Ionicons name="person" size={40} color="#888" />
                   </View>
                 )}
-                <View style={styles.editImageButton}>
+                <View style={[styles.editImageButton, { backgroundColor: SECTION_COLORS.profil.accent }]}>
                   <Ionicons name="camera" size={16} color="#fff" />
                 </View>
               </TouchableOpacity>
-
               <Text style={styles.label}>Nom *</Text>
+              <TextInput style={styles.input} value={nom} onChangeText={setNom} placeholder="Votre nom" />
+              <Text style={styles.label}>Email</Text>
               <TextInput
-                style={styles.input}
-                value={nom}
-                onChangeText={setNom}
-                placeholder="Votre nom"
-                placeholderTextColor="#999"
-              />
-
-              <Text style={styles.label}>Email *</Text>
-              <TextInput
-                style={styles.input}
+                style={[styles.input, styles.inputDisabled]}
                 value={email}
-                onChangeText={setEmail}
-                placeholder="Votre email"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                placeholderTextColor="#999"
                 editable={false}
+                placeholder="Email"
               />
-
               <Text style={styles.label}>Date de naissance</Text>
               <TextInput
                 style={styles.input}
                 value={dateNaissance}
                 onChangeText={setDateNaissance}
                 placeholder="JJ/MM/AAAA"
-                placeholderTextColor="#999"
               />
-
               <TouchableOpacity
-                style={styles.saveButton}
+                style={[styles.saveButton, { backgroundColor: SECTION_COLORS.profil.accent }]}
                 onPress={handleUpdateProfile}
                 disabled={loading}
               >
@@ -322,48 +540,99 @@ const ParametresScreen = () => {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Barre de navigation en bas */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Services')}
+      {/* Modal mot de passe */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={passwordModalVisible}
+        onRequestClose={() => setPasswordModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
         >
-          <Ionicons name="home-outline" size={24} color="#2c5f2d" />
-          <Text style={styles.navText}>Accueil</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Chatbot')}
-        >
-          <Ionicons name="chatbubbles-outline" size={24} color="#2c5f2d" />
-          <Text style={styles.navText}>Chatbot</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Prediction')}
-        >
-          <Ionicons name="analytics-outline" size={24} color="#2c5f2d" />
-          <Text style={styles.navText}>Prédiction</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.navItem, styles.navItemActive]}
-        >
-          <Ionicons name="settings" size={24} color="#2c5f2d" />
-          <Text style={[styles.navText, styles.navTextActive]}>Paramètres</Text>
-        </TouchableOpacity>
-      </View>
+          <View style={styles.modalContent}>
+            <View style={[styles.modalHeader, { borderBottomColor: SECTION_COLORS.compte.border }]}>
+              <Text style={[styles.modalTitle, { color: SECTION_COLORS.compte.accent }]}>
+                Changer le mot de passe
+              </Text>
+              <TouchableOpacity onPress={() => setPasswordModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+              <Text style={styles.label}>Mot de passe actuel *</Text>
+              <TextInput
+                style={styles.input}
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                secureTextEntry
+                placeholder="Mot de passe actuel"
+              />
+              <Text style={styles.label}>Nouveau mot de passe *</Text>
+              <TextInput
+                style={styles.input}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                placeholder="Au moins 6 caractères"
+              />
+              <Text style={styles.label}>Confirmer le nouveau mot de passe *</Text>
+              <TextInput
+                style={styles.input}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                placeholder="Répétez le mot de passe"
+              />
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: SECTION_COLORS.compte.accent }]}
+                onPress={handleChangePassword}
+                disabled={loading}
+              >
+                <Text style={styles.saveButtonText}>
+                  {loading ? 'Enregistrement...' : 'Mettre à jour le mot de passe'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal à propos */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={aboutModalVisible}
+        onRequestClose={() => setAboutModalVisible(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={styles.aboutBox}>
+            <Ionicons name="leaf" size={48} color={SECTION_COLORS.profil.accent} />
+            <Text style={styles.aboutTitle}>MonAppIA / GollaSense</Text>
+            <Text style={styles.aboutText}>Version 1.0.0</Text>
+            <Text style={styles.aboutText}>
+              Application d’aide à la décision agricole : prédiction d’irrigation, chatbot, gestion
+              des stocks et support.
+            </Text>
+            <TouchableOpacity
+              style={[styles.saveButton, { backgroundColor: SECTION_COLORS.app.accent, marginTop: 16 }]}
+              onPress={() => setAboutModalVisible(false)}
+            >
+              <Text style={styles.saveButtonText}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#d4f0d2',
-  },
+  container: { flex: 1, backgroundColor: '#d4f0d2' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -371,60 +640,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 2,
+    borderBottomColor: '#2c5f2d',
   },
-  backButton: {
-    padding: 5,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#000',
-    flex: 1,
-    textAlign: 'center',
-  },
-  placeholder: {
-    width: 34,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  section: {
-    marginTop: 20,
-    paddingHorizontal: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c5f2d',
-    marginBottom: 15,
-  },
+  backButton: { padding: 5 },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#1B5E20', flex: 1, textAlign: 'center' },
+  placeholder: { width: 34 },
+  scrollView: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  loadingText: { color: '#2c5f2d', fontSize: 16 },
+  section: { marginTop: 20, paddingHorizontal: 20 },
+  sectionProfil: {},
+  sectionCompte: {},
+  sectionApp: {},
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12 },
   profileCard: {
     backgroundColor: '#fff',
-    borderRadius: 15,
+    borderRadius: 16,
     padding: 20,
     alignItems: 'center',
+    borderWidth: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 3,
   },
-  profileImageContainer: {
-    position: 'relative',
-    marginBottom: 15,
-  },
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
+  profileImageContainer: { position: 'relative', marginBottom: 8 },
+  profileImage: { width: 100, height: 100, borderRadius: 50 },
   profileImagePlaceholder: {
     width: 100,
     height: 100,
@@ -437,195 +680,123 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#2c5f2d',
     borderRadius: 15,
-    width: 30,
-    height: 30,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#fff',
   },
-  profileInfo: {
-    alignItems: 'center',
-    marginBottom: 20,
+  photoHint: { fontSize: 12, color: '#666', marginBottom: 12 },
+  profileInfo: { alignItems: 'center', marginBottom: 16 },
+  userName: { fontSize: 20, fontWeight: 'bold', color: '#000', marginBottom: 4 },
+  userEmail: { fontSize: 14, color: '#666', marginBottom: 6 },
+  userDate: { fontSize: 14, color: '#666' },
+  roleBadge: {
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 6,
   },
-  userName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 5,
-  },
-  userEmail: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  userDate: {
-    fontSize: 14,
-    color: '#666',
-  },
-  editButton: {
+  roleBadgeText: { color: '#1B5E20', fontWeight: '700', fontSize: 12 },
+  sectionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f7ef',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: 12,
     gap: 8,
   },
-  editButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c5f2d',
-  },
+  sectionButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
+    padding: 14,
+    borderRadius: 12,
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-    gap: 15,
+    borderWidth: 1.5,
+    gap: 12,
   },
-  menuItemText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#000',
+  menuItemRow: { justifyContent: 'space-between' },
+  menuItemDisabled: { opacity: 0.5 },
+  menuIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  menuItemValue: {
-    fontSize: 14,
-    color: '#666',
-    marginRight: 5,
-  },
+  menuItemText: { flex: 1, fontSize: 16, color: '#222', fontWeight: '500' },
+  menuItemValue: { fontSize: 14, color: '#555', fontWeight: '600', marginRight: 4 },
   deconnexionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ff4444',
+    backgroundColor: '#c62828',
     marginHorizontal: 20,
-    marginTop: 30,
-    marginBottom: 20,
+    marginTop: 24,
+    marginBottom: 32,
     paddingVertical: 15,
-    borderRadius: 10,
+    borderRadius: 12,
     gap: 10,
   },
-  deconnexionButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  modalOverlay: {
+  deconnexionButtonText: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalOverlayCenter: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 24,
   },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '90%',
-    paddingBottom: 20,
+    paddingBottom: 24,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 2,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#000',
-  },
-  closeButton: {
-    padding: 5,
-  },
-  modalBody: {
-    padding: 20,
-  },
-  modalProfileImageContainer: {
-    alignSelf: 'center',
-    position: 'relative',
-    marginBottom: 20,
-  },
-  modalProfileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
+  modalTitle: { fontSize: 20, fontWeight: 'bold' },
+  modalBody: { padding: 20 },
+  modalProfileImageContainer: { alignSelf: 'center', position: 'relative', marginBottom: 16 },
+  modalProfileImage: { width: 110, height: 110, borderRadius: 55 },
   modalProfileImagePlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     backgroundColor: '#e0e0e0',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  label: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#555',
-    marginBottom: 6,
-    marginTop: 10,
-  },
+  label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 6, marginTop: 8 },
   input: {
     backgroundColor: '#f5f5f5',
     borderRadius: 10,
     padding: 12,
     fontSize: 16,
     color: '#000',
-    marginBottom: 5,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#ddd',
   },
-  saveButton: {
-    backgroundColor: '#2c5f2d',
-    borderRadius: 10,
-    padding: 15,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  inputDisabled: { backgroundColor: '#eee', color: '#777' },
+  saveButton: { borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 20 },
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  aboutBox: {
     backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingBottom: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
-  navItem: {
+    borderRadius: 16,
+    padding: 24,
     alignItems: 'center',
-    gap: 4,
   },
-  navItemActive: {
-    backgroundColor: '#f0f7ef',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  navText: {
-    fontSize: 12,
-    color: '#2c5f2d',
-    fontWeight: '500',
-  },
-  navTextActive: {
-    fontWeight: 'bold',
-  },
+  aboutTitle: { fontSize: 20, fontWeight: 'bold', marginTop: 12, color: '#1B5E20' },
+  aboutText: { fontSize: 14, color: '#555', textAlign: 'center', marginTop: 8, lineHeight: 20 },
 });
 
 export default ParametresScreen;
-

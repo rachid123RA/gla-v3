@@ -486,26 +486,6 @@ const PredictionScreen = () => {
           <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
-      
-      {/* Barre de navigation en bas */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="home-outline" size={24} color="#2c5f2d" />
-          <Text style={styles.navText}>Accueil</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="analytics-outline" size={24} color="#2c5f2d" />
-          <Text style={styles.navText}>Prédiction</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="stats-chart-outline" size={24} color="#2c5f2d" />
-          <Text style={styles.navText}>Rapports</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="settings-outline" size={24} color="#2c5f2d" />
-          <Text style={styles.navText}>Paramètres</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 };
@@ -694,25 +674,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   bottomSpacer: {
-    height: 20,
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingBottom: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
-  navItem: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  navText: {
-    fontSize: 12,
-    color: '#2c5f2d',
-    fontWeight: '500',
+    height: 32,
   },
 });
 

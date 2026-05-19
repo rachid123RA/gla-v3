@@ -25,6 +25,7 @@ import AdminDashboardScreen from './src/screens/admin/AdminDashboardScreen';
 import AdminUsersScreen from './src/screens/admin/AdminUsersScreen';
 import AdminSubscriptionsScreen from './src/screens/admin/AdminSubscriptionsScreen';
 import AdminSupportScreen from './src/screens/admin/AdminSupportScreen';
+import AdminNotificationsScreen from './src/screens/admin/AdminNotificationsScreen';
 import SubscriptionGate from './src/components/SubscriptionGate';
 
 const Stack = createNativeStackNavigator();
@@ -46,6 +47,7 @@ function AdminStack() {
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: 'Utilisateurs' }} />
       <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} options={{ title: 'Abonnements' }} />
       <Stack.Screen name="AdminSupport" component={AdminSupportScreen} options={{ title: 'Support' }} />
+      <Stack.Screen name="AdminNotifications" component={AdminNotificationsScreen} options={{ title: 'Notifications' }} />
     </Stack.Navigator>
   );
 }

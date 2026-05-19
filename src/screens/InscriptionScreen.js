@@ -13,6 +13,8 @@ import {
   Image
 } from 'react-native';
 import { creerCompte } from '../services/authService';
+import { updateUserProfileImage } from '../services/databaseService';
+import { persistProfileImage } from '../services/profileImageService';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -34,10 +36,10 @@ const InscriptionScreen = ({ navigation }) => {
 
     // Ouvrir le sélecteur d'image
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.85,
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -57,7 +59,14 @@ const InscriptionScreen = ({ navigation }) => {
     }
 
     setLoading(true);
-    const result = await creerCompte(email, password, nom, dateNaissance, imageProfil);
+    const result = await creerCompte(email, password, nom, dateNaissance, null);
+
+    if (result.success && imageProfil && result.user?.id) {
+      const persisted = await persistProfileImage(result.user.id, imageProfil);
+      if (persisted.success) {
+        await updateUserProfileImage(result.user.id, persisted.uri);
+      }
+    }
 
     if (result.success) {
       Alert.alert(

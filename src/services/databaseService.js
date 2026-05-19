@@ -97,6 +97,19 @@ export const initDatabase = async () => {
       );
     `);
 
+    // Notifications admin → affichées sur l'accueil (Services)
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS admin_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        isActive INTEGER NOT NULL DEFAULT 1,
+        showAsPopup INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT DEFAULT (datetime('now')),
+        updatedAt TEXT DEFAULT (datetime('now'))
+      );
+    `);
+
     // Seed FAQ (si vide)
     const faqCount = await db.getFirstAsync(`SELECT COUNT(*) as c FROM chatbot_faq`);
     if ((faqCount?.c ?? 0) === 0) {
@@ -267,6 +280,12 @@ export const getAdminMetrics = async () => {
       'SELECT COUNT(DISTINCT userId) as c FROM predictions WHERE userId IS NOT NULL'
     );
     const subsRow = await database.getFirstAsync('SELECT COUNT(*) as c FROM subscriptions');
+    const openTicketsRow = await database.getFirstAsync(
+      `SELECT COUNT(*) as c FROM support_tickets WHERE status = 'open'`
+    );
+    const activeNotifRow = await database.getFirstAsync(
+      `SELECT COUNT(*) as c FROM admin_notifications WHERE isActive = 1`
+    );
     return {
       success: true,
       data: {
@@ -274,10 +293,124 @@ export const getAdminMetrics = async () => {
         totalPredictions: totalPredRow?.c ?? 0,
         usersWithPredictions: usersPredRow?.c ?? 0,
         totalSubscriptions: subsRow?.c ?? 0,
+        openTickets: openTicketsRow?.c ?? 0,
+        activeNotifications: activeNotifRow?.c ?? 0,
       },
     };
   } catch (error) {
     console.error('Erreur getAdminMetrics:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const getAdminChartData = async () => {
+  try {
+    const database = await getDatabase();
+    const subsByStatus = await database.getAllAsync(
+      `SELECT status, COUNT(*) as count FROM subscriptions GROUP BY status`
+    );
+    const subsByPlan = await database.getAllAsync(
+      `SELECT plan, COUNT(*) as count FROM subscriptions GROUP BY plan`
+    );
+    const ticketsByStatus = await database.getAllAsync(
+      `SELECT status, COUNT(*) as count FROM support_tickets GROUP BY status`
+    );
+    const predByDay = await database.getAllAsync(
+      `SELECT date(createdAt) as day, COUNT(*) as count
+       FROM predictions
+       WHERE createdAt >= datetime('now', '-6 days')
+       GROUP BY date(createdAt)
+       ORDER BY day ASC`
+    );
+    return {
+      success: true,
+      data: { subsByStatus, subsByPlan, ticketsByStatus, predByDay },
+    };
+  } catch (error) {
+    console.error('Erreur getAdminChartData:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ========== NOTIFICATIONS ADMIN ==========
+export const getActiveNotifications = async () => {
+  try {
+    const database = await getDatabase();
+    const rows = await database.getAllAsync(
+      `SELECT * FROM admin_notifications WHERE isActive = 1 ORDER BY createdAt DESC`
+    );
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error('Erreur getActiveNotifications:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const getAllAdminNotifications = async () => {
+  try {
+    const database = await getDatabase();
+    const rows = await database.getAllAsync(
+      `SELECT * FROM admin_notifications ORDER BY createdAt DESC`
+    );
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error('Erreur getAllAdminNotifications:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const createAdminNotification = async (title, message, showAsPopup = true) => {
+  try {
+    const database = await getDatabase();
+    const result = await database.runAsync(
+      `INSERT INTO admin_notifications (title, message, isActive, showAsPopup)
+       VALUES (?, ?, 1, ?)`,
+      [title.trim(), message.trim(), showAsPopup ? 1 : 0]
+    );
+    return { success: true, id: result.lastInsertRowId };
+  } catch (error) {
+    console.error('Erreur createAdminNotification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateAdminNotification = async (id, title, message, isActive, showAsPopup) => {
+  try {
+    const database = await getDatabase();
+    await database.runAsync(
+      `UPDATE admin_notifications
+       SET title = ?, message = ?, isActive = ?, showAsPopup = ?, updatedAt = datetime('now')
+       WHERE id = ?`,
+      [title.trim(), message.trim(), isActive ? 1 : 0, showAsPopup ? 1 : 0, id]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur updateAdminNotification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const deleteAdminNotification = async (id) => {
+  try {
+    const database = await getDatabase();
+    await database.runAsync('DELETE FROM admin_notifications WHERE id = ?', [id]);
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur deleteAdminNotification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const toggleAdminNotificationActive = async (id, isActive) => {
+  try {
+    const database = await getDatabase();
+    await database.runAsync(
+      `UPDATE admin_notifications SET isActive = ?, updatedAt = datetime('now') WHERE id = ?`,
+      [isActive ? 1 : 0, id]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur toggleAdminNotificationActive:', error);
     return { success: false, error: error.message };
   }
 };
@@ -502,14 +635,14 @@ export const updateUserProfileImage = async (userId, imageProfil) => {
 };
 
 // Mettre à jour les informations utilisateur
-export const updateUser = async (userId, nom, dateNaissance, imageProfil = null) => {
+export const updateUser = async (userId, nom, dateNaissance, imageProfil = undefined) => {
   try {
     const database = await getDatabase();
-    
-    if (imageProfil) {
+
+    if (imageProfil !== undefined) {
       await database.runAsync(
         'UPDATE users SET nom = ?, dateNaissance = ?, imageProfil = ? WHERE id = ?',
-        [nom, dateNaissance || null, imageProfil, userId]
+        [nom, dateNaissance || null, imageProfil || null, userId]
       );
     } else {
       await database.runAsync(
@@ -517,10 +650,47 @@ export const updateUser = async (userId, nom, dateNaissance, imageProfil = null)
         [nom, dateNaissance || null, userId]
       );
     }
-    
+
     return { success: true };
   } catch (error) {
     console.error('Erreur mise à jour utilisateur:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Changer le mot de passe (vérifie l'ancien mot de passe)
+export const updateUserPassword = async (userId, currentPassword, newPassword) => {
+  try {
+    const database = await getDatabase();
+
+    const user = await database.getFirstAsync(
+      'SELECT id, password FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!user) {
+      return { success: false, error: 'Utilisateur non trouvé' };
+    }
+
+    if (user.password !== currentPassword) {
+      return { success: false, error: 'Mot de passe actuel incorrect' };
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return {
+        success: false,
+        error: 'Le nouveau mot de passe doit contenir au moins 6 caractères',
+      };
+    }
+
+    await database.runAsync('UPDATE users SET password = ? WHERE id = ?', [
+      newPassword,
+      userId,
+    ]);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur mise à jour mot de passe:', error);
     return { success: false, error: error.message };
   }
 };

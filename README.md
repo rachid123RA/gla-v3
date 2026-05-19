@@ -21,6 +21,31 @@ Génération (si PlantUML est installé) :
 plantuml uml/*.puml
 ```
 
+## Push automatique vers GitHub
+
+**Une seule fois** (authentification Mac) :
+
+```bash
+npm run github:setup
+```
+
+Puis, à chaque mise à jour :
+
+```bash
+npm run push:github -- "feat: description de vos changements"
+```
+
+Sans message, un message par défaut est utilisé.
+
+**Avec token** (push sans saisie manuelle) :
+
+```bash
+export GITHUB_TOKEN=votre_token_github
+npm run push:github -- "feat: ma modification"
+```
+
+Dépôt : https://github.com/rachid123RA/GLA-V2-manar
+
 ## Prérequis
 
 - Node.js (LTS recommandé)

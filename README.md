@@ -23,7 +23,7 @@ plantuml uml/*.puml
 
 ## Dépôt GitHub
 
-https://github.com/rachid123RA/GLA-V2-manar
+https://github.com/rachid123RA/gla-v3
 
 ## Prérequis
 
